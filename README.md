@@ -110,7 +110,7 @@ Local versus cloud describes **where compilation happens**, not a different mobi
 
 The detailed phone workflow below uses Expo Go. Custom development builds and EAS distribution are alternatives requiring their own configuration; this repository does not include a published cloud build or signed binary. See Expo's [development-build overview](https://docs.expo.dev/develop/development-builds/introduction/), [cloud build setup](https://docs.expo.dev/build/setup/), and [local build overview](https://docs.expo.dev/guides/local-app-overview/).
 
-You may use VS Code for every route. Local iOS compilation/simulators require Apple's Xcode toolchain. The measured mobile coverage is the React Native Web build and UI/backend workflow; physical-device execution is outside the recorded test coverage. See [VALIDATION.md](VALIDATION.md).
+You may use VS Code for every route. Local iOS compilation/simulators require Apple's Xcode toolchain. The measured mobile coverage is the React Native Web build and UI/backend workflow. See [VALIDATION.md](VALIDATION.md).
 
 ### 1. Prepare a compatible phone client
 
