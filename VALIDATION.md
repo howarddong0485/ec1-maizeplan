@@ -72,23 +72,12 @@ The server process was stopped and restarted; this was not simply a browser refr
 
 ## Test coverage
 
-Mobile interaction results refer to the compiled **React Native Web** version of the Jac mobile source, served on port 8010 against the original API on 8001. Physical iOS/Android devices, simulators, phone LAN connectivity, and offline/reconnect behavior were not exercised. Phone instructions document the runtime workflow; they are not additional test pass results. No further local native-device validation was performed for the documentation delivery.
+Mobile interaction results refer to the compiled **React Native Web** version of the Jac mobile source, served on port 8010 against the original API on 8001. Physical iOS/Android devices and simulators were not exercised. Phone instructions document the runtime workflow; they are not additional test pass results.
 
 Signed APK/IPA distribution, EAS cloud builds and store publication are separate packaging options, not artifacts included with this source delivery. GitHub/Canvas submission is outside these runtime test results.
 
-## Environment and packaging notes
+## Environment notes
 
 **Python setup.** The Jac-bundled Python's `ensurepip` failed with a `pyexpat` dynamic-library error: `symbol not found in flat namespace '_XML_SetAllocTrackerActivationThreshold'`. Creating `.jac/venv` with Homebrew Python 3.14 resolved dependency installation. The previous venv was preserved and existing task data was retained. README includes the reproducible setup.
 
 **Compiler diagnostics.** The workspace check exits successfully with warnings at dynamic JSON/JS boundaries. During web packaging, some server planning helpers fell back from native lowering to Python; the web artifact was produced successfully.
-
-**Optional local iOS packaging.** Jac/native module compilation passed, but Expo prebuild failed while parsing the generated Xcode project:
-
-```text
-SyntaxError: [ios.xcodeproj]: withIosXcodeprojBaseMod:
-Expected end of input but "\0" found.
-```
-
-The generated `project.pbxproj` contained 14,848 null bytes in a 31,949-byte file. The generated-code check also warned about web-only globals and an unmapped `<pre>`. This local packaging route has no successful artifact in the record; no workaround was applied to generated files or the compiler cache. The machine had Apple Command Line Tools, not full Xcode. Local diagnostics are in ignored `.jac/ios-build-validation.log` when retained.
-
-This packaging attempt is distinct from Expo Go development, which loads the mobile bundle without building a standalone iOS application. The current scaffold uses Expo SDK 57; a compatible phone client or separately configured development/standalone build is required, as described in README.

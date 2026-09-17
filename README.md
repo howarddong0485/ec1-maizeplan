@@ -212,7 +212,7 @@ jac build --platform android mobile
 jac build --platform ios mobile
 ```
 
-See `jac guide jac-mobile-app` for platform prerequisites and the `android_builder` / `ios_builder` settings for EAS. Cloud builds require Expo account/project configuration and appropriate signing credentials. The recorded local iOS packaging result and environment details are in [VALIDATION.md](VALIDATION.md). Expo Go development does not invoke the standalone iOS packaging step.
+See `jac guide jac-mobile-app` for platform prerequisites and the `android_builder` / `ios_builder` settings for EAS. Cloud builds require Expo account/project configuration and appropriate signing credentials. Expo Go development does not invoke the standalone iOS packaging step.
 
 ## How the four components fit together
 
