@@ -1,7 +1,7 @@
 # MaizePlan
 
-**Student:** Gehao Dong  
-**UMID:** dgehao  
+**Student:** Gehao Dong / dgehao  
+**UMID:** 62168169  
 **Course:** EECS 449 / CSE449-F26 — Assignment 1  
 **Delivery:** Jac server, web frontend, mobile client, CLI, automated tests, and setup documentation. See [VALIDATION.md](VALIDATION.md) for measured results and test coverage.
 
