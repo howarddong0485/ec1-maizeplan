@@ -1,0 +1,13 @@
+.jac/
+node_modules/
+.vscode/
+.idea/
+dist/
+*.jab
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.DS_Store
+.Rhistory
