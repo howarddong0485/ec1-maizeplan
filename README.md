@@ -14,15 +14,17 @@ MaizePlan is a personal coursework planner written in Jac. It turns assignment d
 - Web search, open/completed filters, and overdue/completion counts.
 - A transparent focus planner: earliest deadline first, priority as a tie-breaker, up to 25 minutes of work followed by a 5-minute break.
 - The time budget **includes breaks**. Large tasks can receive partial blocks. Due/overdue work that cannot fit is explicitly reported.
+- Record actual study sessions, automatically reduce remaining effort, and complete tasks when the remainder reaches zero. History is shared across interfaces.
+- Plan seven days with separate daily capacities, days off, and deadline shortfall warnings that distinguish late catch-up from on-time work.
 - Native mobile screens use Jac MobUI / React Native, not an HTML webview.
 - Account-isolated graph persistence; anonymous access to planning endpoints is not allowed.
 - No LLM key, paid API, or external calendar required.
 
-The planner is a suggestion rather than a calendar booking. Changing the planning day changes overdue reporting, not which tasks are eligible: all open tasks may be scheduled. It does not track actual study time, send notifications, run offline, or decrement remaining minutes automatically. Edit estimates to reflect progress.
+The planner is a suggestion rather than a calendar booking. Changing the planning day changes overdue reporting, not which tasks are eligible: all open tasks may be scheduled. Study time is entered manually rather than measured by a timer. Recording it reduces the current remaining estimate; generating a plan never changes tasks. Notifications, offline operation, and calendar bookings are not implemented.
 
 ## Prerequisites
 
-1. Install **Jac 0.37.17** from the [official repository](https://github.com/jaseci-labs/jac/releases/tag/v0.37.17). Use the release appropriate for your operating system and CPU. Do not replace it with an older PyPI `jaclang` installation; this project uses the current workspace/MobUI toolchain.
+1. Install **Jac 0.37.21** from the [official repository](https://github.com/jaseci-labs/jac/releases/tag/v0.37.21). Use the release appropriate for your operating system and CPU. Do not replace it with an older PyPI `jaclang` installation; this project uses the current workspace/MobUI toolchain.
 2. Install VS Code and its Jac extension, as recommended by the course.
 3. Have an internet connection for the first dependency and embedded database downloads. Jac supplies its own Python/Bun toolchain. The optional integration script uses system Python 3.10+.
 4. Run Jac as your normal desktop user, **not with sudo/root**. The runtime provisions embedded PostgreSQL. If automatic provisioning is unavailable, configure a working external PostgreSQL instance using `JAC_DB_URL` according to `jac guide jac-sv-persistence`.
@@ -30,7 +32,7 @@ The planner is a suggestion rather than a calendar booking. Changing the plannin
 Official installer (inspect it before executing):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --version 0.37.17
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --version 0.37.21
 jac --version
 ```
 
@@ -38,7 +40,7 @@ The locally tested platform is Apple Silicon macOS. Use a supported binary for y
 
 ## Start the web app and server
 
-From a fresh checkout, enter the repository root. On Apple Silicon macOS with Jac 0.37.17, create the project environment with Homebrew Python **before** installing dependencies:
+From a fresh checkout, enter the repository root. On Apple Silicon macOS with Jac 0.37.21, create the project environment with Homebrew Python **before** installing dependencies:
 
 ```bash
 brew install python@3.14
@@ -78,6 +80,9 @@ jac run cli list --today
 jac run cli list --all
 jac run cli --json list
 jac run cli plan --day 2026-10-05 --minutes 120
+jac run cli study FULL_TASK_ID --minutes 25
+jac run cli history
+jac run cli week --start 2026-10-05 --budgets 60,90,0,120,60,0,30
 jac run cli done FULL_TASK_ID
 jac run cli reopen FULL_TASK_ID
 jac run cli logout
@@ -91,9 +96,22 @@ jac run cli --server http://127.0.0.1:8001 --json list
 
 Passwords are entered using a hidden prompt and never saved. CLI login stores a token and exact server URL in `.jac/cli-session.json` with owner-only permissions. Logout removes only this local session, not tasks. `.jac/` must never be committed. For scripts, `MAIZEPLAN_TOKEN` may supply a token instead of the local session file. The CLI refuses to reuse a token for a different saved server URL.
 
+## Study progress and multi-day planning
+
+On the web, use **Record your study** and **Seven-day workload plan** below the daily focus planner. On mobile, open **Progress**. The CLI provides `study`, `history`, and `week`.
+
+1. Choose an open task, enter the study date and actual focus minutes (1–1440, excluding breaks), then record the session. Dates cannot be later than the server's current date. A 90-minute task becomes 65 minutes after a 25-minute session.
+2. History preserves actual minutes and the amount deducted. Recording 100 minutes against 65 remaining preserves 100 actual minutes, deducts 65, and completes the task at zero. To reopen a zero-minute task, first edit its remaining estimate on the web, then reopen it. Study history is append-only in this version.
+3. Set the forecast start date and each day's available time. Use 0 for a day off or 5–720 minutes including breaks. Web/mobile show seven days; CLI/API accept 1–14 days. The scheduler carries unfinished work forward, with breaks restarting each day.
+4. Review **Deadline shortfall**, **Already overdue**, and **unscheduled** minutes. A task due today cannot be considered on time merely because tomorrow has capacity. Warnings cover deadlines through the forecast's final day; later deadlines are outside that assessment. Blocks after their deadline are marked as catch-up.
+
+Refresh tasks/history after another interface saves a session, and regenerate the forecast after task changes. Daily capacities and forecasts are temporary UI inputs, not saved calendars. Backdated sessions reduce the current estimate; they do not reconstruct historical plans.
+
+For an uncertain CLI submission, retry with the same fields and the request ID printed to stderr: `jac run cli study FULL_TASK_ID --minutes 25 --day YYYY-MM-DD --request-id PREVIOUS_ID`. A previously saved request returns its existing record without deducting twice. Web/mobile retain the request ID after a failed submission while the fields remain unchanged; changing fields or reloading starts a new request.
+
 ## Mobile app
 
-The mobile UI is written in Jac (`mobile/Phone.jac`) using MobUI / React Native. It provides **Tasks**, **Add**, and **Focus** screens connected to the same planning API as the web and CLI. The phone runs the mobile client; the computer must keep serving both the backend and the development bundle.
+The mobile UI is written in Jac (`mobile/Phone.jac`) using MobUI / React Native. It provides **Tasks**, **Add**, **Focus**, and **Progress** screens connected to the same planning API as the web and CLI. The phone runs the mobile client; the computer must keep serving both the backend and the development bundle.
 
 ### Runtime and build options
 
@@ -114,7 +132,7 @@ You may use VS Code for every route. Local iOS compilation/simulators require Ap
 
 ### 1. Prepare a compatible phone client
 
-Complete the Jac 0.37.17 and project setup above. Connect your computer and phone to the same trusted Wi-Fi network.
+Complete the Jac 0.37.21 and project setup above. Connect your computer and phone to the same trusted Wi-Fi network.
 
 The current Jac scaffold generates **Expo SDK 57** (`"expo": "~57.0.0"` in `.jac/mobile-rn/package.json`). The installed Expo Go must support that SDK:
 
@@ -139,7 +157,7 @@ Use a trusted network, and change Jac's default administrator credentials before
 
 ### 3. Start the mobile development bundle — terminal B
 
-Jac 0.37.17's mobile dev command also starts a helper API process. To keep that process separate from the planning server's database/session, run it from an isolated source copy. In a **second terminal, initially at the original repository root**, run:
+Jac 0.37.21's mobile dev command also starts a helper API process. To keep that process separate from the planning server's database/session, run it from an isolated source copy. In a **second terminal, initially at the original repository root**, run:
 
 ```bash
 # macOS/Linux shell; copies source only, not user data or tokens.
@@ -171,8 +189,9 @@ Expo's [device-start guide](https://docs.expo.dev/get-started/start-developing/)
 ### 5. Use the mobile screens
 
 - **Tasks:** view course, deadline, estimate and priority; tap **Mark complete** or **Reopen task**. Tap **Refresh from server** after changing tasks on another interface.
-- **Add:** enter a title, optional course, `YYYY-MM-DD` deadline, estimate of 5–1440 minutes, and priority 1–3; tap **Add task**.
+- **Add:** enter a title, optional course, `YYYY-MM-DD` deadline, estimate of 1–1440 minutes, and priority 1–3; tap **Add task**.
 - **Focus:** enter a planning date and a budget of 5–720 minutes; tap **Make my plan**. The budget includes breaks, and due/overdue work that does not fit is reported.
+- **Progress:** record study sessions, refresh shared history, and generate a seven-day plan with daily capacities and deadline warnings.
 - **Sign out:** ends the in-memory session. Tasks remain on the backend; reopening/reloading the app requires signing in again.
 
 For a cross-device demo, add a task on the web, refresh Tasks on the phone, complete it on the phone, and refresh the web's Done view. Run `jac run cli list --all` from the **original project directory** to see the same task. Reopen it with `jac run cli reopen FULL_TASK_ID`, then refresh the phone. No automatic live synchronization is implemented.
@@ -218,10 +237,10 @@ See `jac guide jac-mobile-app` for platform prerequisites and the `android_build
 
 | Component | Source | Responsibility |
 |---|---|---|
-| Jac server | `core/api.jac`, `core/planning.jac` | Validate and persist tasks under the authenticated user's root; generate focus plans |
-| Web | `web/` | Full task editing, search/filter, task summary, planning |
-| Native mobile | `mobile/` | Quick capture, check/complete/reopen, focus plan; MobUI native controls |
-| CLI | `cli/main.jac` | Terminal capture, listing, completion/reopening, planning and JSON output |
+| Jac server | `core/api.jac`, `core/planning.jac` | Validate and persist tasks under the authenticated user's root; store study records and generate daily/multi-day plans |
+| Web | `web/` | Full task editing, search/filter, task summary, study history and daily/weekly planning |
+| Native mobile | `mobile/` | Quick capture, check/complete/reopen, focus plan, study records and weekly plan; MobUI native controls |
+| CLI | `cli/main.jac` | Terminal capture, listing, completion/reopening, study/history, daily/multi-day planning and JSON output |
 | Shared client transport | `core/client.jac` | Web/mobile login and HTTP requests to the explicitly selected backend |
 
 `web/main.jac` imports each planning endpoint so Jac registers it at `/function/<name>`. The clients POST parameter JSON and read Jac's `data.result` envelope. Web/mobile share transport code; CLI uses Python's standard HTTP library **from Jac**. All planning logic lives on the server—there are no independent browser/phone/CLI task stores to drift apart.
@@ -230,7 +249,7 @@ The API declarations use `:protect`: project-visible, but still authenticated. U
 
 ## Why this project stands out
 
-The key design choice is an achievable plan, not a longer task list. The scheduler accounts for recovery breaks, partially schedules large assignments, and makes overload visible. Its deterministic rules are understandable and testable. Different interfaces suit different moments: organize on the web, check off on a phone, and capture from a terminal. Honest limitations and reproducible verification are part of the design.
+The key design choice is an achievable plan, not a longer task list. The scheduler accounts for recovery breaks, partially schedules large assignments, and makes overload visible. The study log closes the loop: actual work reduces the next plan, while daily capacities expose deadline shortfalls before the week fills up. Its deterministic rules are understandable and testable. Different interfaces suit different moments: organize on the web, check off on a phone, and capture from a terminal. Honest limitations and reproducible verification are part of the design.
 
 ## Tests and demonstration
 
@@ -245,19 +264,24 @@ With the real backend running, run:
 
 ```bash
 python3 scripts/smoke_test.py
+python3 scripts/feature_test.py
 ```
 
 This creates two uniquely named **test accounts** and test tasks on the selected development server. It tests authentication, isolation (including cross-account edits), invalid input rejection, edits, CLI capture/completion, and exact CLI/API planning consistency. It does not remove those accounts or modify real users' tasks. Run only against your development instance.
+
+The feature script also creates two disposable accounts and checks study deductions, repeat-request handling, account isolation, weekly capacity validation, and exact CLI/API multi-day plan equality.
 
 To verify persistence reproducibly:
 
 ```bash
 python3 scripts/smoke_test.py --write-restart-state .jac/restart-check.json
+python3 scripts/feature_test.py --write-restart-state .jac/features-restart.json
 # Stop the server with Ctrl+C, then restart it with jac run.
 python3 scripts/smoke_test.py --verify-restart-state .jac/restart-check.json
+python3 scripts/feature_test.py --verify-restart-state .jac/features-restart.json
 ```
 
-The state file contains only a disposable test account token and expected task snapshot, is owner-readable only, and remains under ignored `.jac/`. Use the same `--server` URL for both commands when overriding the default.
+The state files contain disposable test account tokens and expected task/history snapshots, are owner-readable only, and remain under ignored `.jac/`. Use the same `--server` URL for both commands when overriding the default.
 
 The following demonstration covers the shared planning workflow. Use the mobile setup above when demonstrating it on a phone:
 
@@ -283,6 +307,6 @@ EC1 is submitted as a GitHub repository link through Canvas. Include the Jac sou
 - [Official Jac source and complete workspace](https://github.com/jaseci-labs/jac/tree/main/jac/examples/jaclang_org)
 - [Jac documentation](https://jaclang.org/docs/latest)
 - [Course-provided AI day-planner guide](https://jaclang.org/docs/v0.37/tutorials/first-app/build-ai-day-planner)
-- Bundled Jac 0.37.17 guides: essentials, fullstack patterns, persistence/auth, MobUI, mobile app, client components, and testing.
+- Bundled Jac 0.37.21 guides: essentials, fullstack patterns, persistence/auth, MobUI, mobile app, client components, and testing.
 
 The task planner, UI, tests, and documentation were developed with AI assistance. Workspace organization and language patterns follow the official examples.

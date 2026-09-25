@@ -1,8 +1,9 @@
 import from core.client { authenticate, rpc, today }
+import from .Progress { Progress }
 
 def:pub Planner -> JsxElement {
     has token: str = "", username: str = "", password: str = "", signup: bool = False;
-    has tasks: list[dict] = [], error: str = "", busy: bool = False;
+    has tasks: list[dict[str, any]] = [], error: str = "", busy: bool = False;
     has title: str = "", course: str = "", due: str = today(), priority: str = "2", minutes: str = "60", editing: str = "";
     has day: str = today(), budget: str = "120", plan: any = None;
     has filter: str = "open", search: str = "", notice: str = "";
@@ -41,7 +42,7 @@ def:pub Planner -> JsxElement {
         } except Exception as err { error = str(err); }
         finally { busy = False; }
     }
-    async def complete(t: dict) {
+    async def complete(t: dict[str, any]) {
         busy = True; error = "";
         try {
             await rpc(window.location.origin, token, "set_done", {"task_id": t["id"], "done": not t["done"]});
@@ -55,7 +56,7 @@ def:pub Planner -> JsxElement {
         except Exception as err { error = str(err); }
         finally { busy = False; }
     }
-    def edit(t: dict) {
+    def edit(t: dict[str, any]) {
         editing = t["id"]; title = t["title"]; course = t["course"]; due = t["due"];
         priority = str(t["priority"]); minutes = str(t["minutes"]);
         field: any = document.getElementById("title");
@@ -122,11 +123,12 @@ def:pub Planner -> JsxElement {
                         <ol className="timeline">{[<li key={str(i)}><span className="time">+{str(b["start"])} min</span><div><strong>{b["title"]}</strong><p>{b["course"] or "Personal"} · {str(b["minutes"])} min focus{" · after a 5-min break" if b["break_before"] else ""}</p></div></li> for (i, b) in enumerate(plan["blocks"])]}</ol>
                         {<p>No open tasks. Enjoy the space in your day.</p> if not len(plan["blocks"]) else <span/>}</div> if plan else <p className="small">Uses every open task, ordered by deadline. Includes breaks in your time budget. Nothing is marked complete automatically.</p>}
                 </section>
+                <Progress base={window.location.origin} token={token} tasks={tasks} onSaved={refresh}/>
             </section><aside className="editor"><p className="eyebrow">GET IT OUT OF YOUR HEAD</p><h2>{"Edit task" if editing else "Add a task"}</h2>
                 <form onSubmit={save}><label htmlFor="title">What needs doing?</label><input id="title" placeholder="Finish the bandits reading" required={True} maxLength={160} value={title} onChange={lambda (e: ChangeEvent) { title = e.target.value; }}/>
                     <label htmlFor="course">Course or area</label><input id="course" placeholder="EECS 449" maxLength={40} value={course} onChange={lambda (e: ChangeEvent) { course = e.target.value; }}/>
                     <label htmlFor="due">Deadline</label><input id="due" type="date" required={True} value={due} onChange={lambda (e: ChangeEvent) { due = e.target.value; }}/>
-                    <div className="form-pair"><label>Priority<select value={priority} onChange={lambda (e: ChangeEvent) { priority = e.target.value; }}><option value="1">Low</option><option value="2">Medium</option><option value="3">High</option></select></label><label>Minutes<input type="number" min="5" max="1440" required={True} value={minutes} onChange={lambda (e: ChangeEvent) { minutes = e.target.value; }}/></label></div>
+                    <div className="form-pair"><label>Priority<select value={priority} onChange={lambda (e: ChangeEvent) { priority = e.target.value; }}><option value="1">Low</option><option value="2">Medium</option><option value="3">High</option></select></label><label>Minutes<input type="number" min="1" max="1440" required={True} value={minutes} onChange={lambda (e: ChangeEvent) { minutes = e.target.value; }}/></label></div>
                     <button className="primary" disabled={busy}>{"Saving…" if busy else ("Save changes" if editing else "+ Add task")}</button>
                     {<button type="button" className="secondary" onClick={lambda { editing = ""; title = ""; }}>Cancel edit</button> if editing else <span/>}
                 </form><p className="small">Estimate the work still remaining. Split a large assignment into smaller tasks when helpful.</p>

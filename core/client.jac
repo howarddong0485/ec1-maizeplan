@@ -5,7 +5,7 @@ No response cache: Refresh always reads the server.
 """
 import from "react" { useState }
 
-async def:pub request(base: str, path: str, token: str, payload: dict) -> any {
+async def:pub request(base: str, path: str, token: str, payload: dict[str, any]) -> any {
     response: any = None;
     body: any = None;
     response = await fetch(base.rstrip("/") + path, {
@@ -33,7 +33,7 @@ async def:pub authenticate(base: str, username: str, password: str, register: bo
     return result["token"];
 }
 
-async def:pub rpc(base: str, token: str, name: str, payload: dict) -> any {
+async def:pub rpc(base: str, token: str, name: str, payload: dict[str, any]) -> any {
     result: any = None;
     result = await request(base, "/function/" + name, token, payload);
     return result["result"];
@@ -42,4 +42,16 @@ async def:pub rpc(base: str, token: str, name: str, payload: dict) -> any {
 def:pub today() -> str {
     now = new(Date);
     return str(now.getFullYear()) + "-" + str(now.getMonth() + 1).zfill(2) + "-" + str(now.getDate()).zfill(2);
+}
+
+
+# Native-safe helpers: no window, document or browser storage.
+def:pub day_offset(day: str, offset: int) -> str {
+    value = new(Date, day + "T12:00:00");
+    value.setDate(value.getDate() + offset);
+    return str(value.getFullYear()) + "-" + str(value.getMonth() + 1).zfill(2) + "-" + str(value.getDate()).zfill(2);
+}
+
+def:pub study_request_id() -> str {
+    return str(Date.now()) + "-" + str(Math.random());
 }

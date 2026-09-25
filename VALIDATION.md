@@ -6,13 +6,41 @@ MaizePlan delivers four Jac components: a persistent planning server, a web fron
 
 | Component | Implemented functionality |
 |---|---|
-| Server | Authenticated task creation/editing, completion/reopening, per-account graph storage, input validation, deterministic focus planning |
-| Web | Account access, task capture/editing, search and filters, summary counts, focus plans and refresh |
-| Mobile | Jac MobUI Tasks, Add and Focus screens, shared authentication/API transport, completion/reopening and refresh |
-| CLI | Registration/login, capture, listing/filtering, completion/reopening, planning, JSON output and local session management |
+| Server | Authenticated task creation/editing, completion/reopening, per-account graph storage, input validation, study sessions with automatic remaining-effort updates, daily/multi-day planning |
+| Web | Account access, task capture/editing, search and filters, summary counts, study history, daily/weekly plans and refresh |
+| Mobile | Jac MobUI Tasks, Add, Focus and Progress screens, shared authentication/API transport, completion/reopening, study records, weekly plans and refresh |
+| CLI | Registration/login, capture, listing/filtering, completion/reopening, study/history, daily/multi-day planning, JSON output and local session management |
 | Documentation and tests | Setup and launch instructions, phone runtime options, integration script, restart-state checks and scheduler tests |
 
-## Verified results
+## Feature validation — 2026-09-25
+
+Current compiler: **Jac 0.37.21**, pinned in `jac.toml`. Generic type annotations were updated for this compiler. The earlier baseline below records the original 0.37.17 run rather than implying a fresh installation was repeated.
+
+| Check | Measured result |
+|---|---|
+| Scheduler unit tests | 11 passed, including multi-day allocation, daily break reset, days off, deadline shortfalls, overdue work, year rollover, validation, ordering and source-task immutability |
+| Three app roots | Type checking passed with warning-level interop diagnostics |
+| Current web/mobile browser builds | Both passed: `jac build web` produced `dist/maizeplan.jab`; `jac build --platform web mobile` produced the React Native Web bundle |
+| Original API/CLI regression script | Passed on the current server/compiler |
+| New API/CLI feature script | Passed: study deduction, auto-completion at zero, actual-versus-credited minutes, repeat-request handling, mismatched request rejection, authentication, account isolation, invalid inputs and exact CLI/API weekly equality |
+| Web interaction | Recording 25 minutes changed a 90-minute task to 65; history showed 25. A 25-minute first day and 120-minute second day produced a 40-minute deadline shortfall despite fitting all work across both days |
+| Mobile React Native Web interaction | Same account showed 65 remaining; recording 15 changed it to 50 and history totaled 40. The same capacities produced 25 minutes of deadline shortfall, with late catch-up marked on day two |
+| Cross-interface progress | After restarting and signing back in, the web showed the mobile-updated 50 minutes remaining and shared history totaling 40 minutes |
+| Backend process restart | Passed: exact task and study-history snapshots survived a graceful stop/restart; replaying the saved request returned its existing record without another deduction |
+
+Retry tests cover sequential retries and retries after restart; they do not establish concurrent multi-client transaction guarantees. Mobile interaction coverage remains the browser-rendered mobile source.
+
+To reproduce the new integration and persistence checks against the local development server:
+
+```bash
+python3 scripts/feature_test.py --write-restart-state .jac/features-restart.json
+# Stop and restart the server.
+python3 scripts/feature_test.py --verify-restart-state .jac/features-restart.json
+```
+
+This creates disposable test accounts and leaves their data in the development database. The ignored, owner-readable state file contains a test token, task/history snapshots, and a saved retry payload.
+
+## Original baseline results
 
 Test environment: Apple Silicon macOS; Jac 0.37.17; project venv created with Homebrew Python 3.14.7. Runtime tests were performed on 2026-09-15. Documentation revised 2026-09-17.
 

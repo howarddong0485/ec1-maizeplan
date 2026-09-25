@@ -6,10 +6,11 @@ import sys;
 import from pathlib { Path }
 import from datetime { date }
 import from getpass { getpass }
+import from uuid { uuid4 }
 import from urllib.request { Request, urlopen }
 import from urllib.error { HTTPError }
 
-def _request(server: str, path: str, token: str, payload: dict) -> dict {
+def _request(server: str, path: str, token: str, payload: dict[str, any]) -> dict[str, any] {
     headers = {"Content-Type": "application/json"};
     if token { headers["Authorization"] = "Bearer " + token; }
     req = Request(server.rstrip("/") + path, data=json.dumps(payload).encode("utf-8"),
@@ -46,6 +47,15 @@ def _parser -> argparse.ArgumentParser {
     plan = sub.add_parser("plan");
     plan.add_argument("--day", `default=date.today().isoformat());
     plan.add_argument("--minutes", `type=int, `default=120);
+    study = sub.add_parser("study", help="Record actual study time and reduce remaining work");
+    study.add_argument("id");
+    study.add_argument("--minutes", `type=int, required=True);
+    study.add_argument("--day", `default=date.today().isoformat());
+    study.add_argument("--request-id", `default="", help="Reuse this ID when retrying an uncertain request");
+    sub.add_parser("history", help="Show saved study records");
+    week = sub.add_parser("week", help="Plan 1–14 days with deadline warnings");
+    week.add_argument("--start", `default=date.today().isoformat());
+    week.add_argument("--budgets", required=True, help="Comma-separated daily minutes, e.g. 60,90,0,60,120,0,30");
     return p;
 }
 
@@ -78,7 +88,7 @@ def main -> int {
         if session["server"] == server { token = session["token"]; }
     }
     if not token { raise RuntimeError("Sign in first: jac run cli login YOUR_USERNAME"); }
-    payload: dict = {};
+    payload: dict[str, any] = {};
     endpoint = "";
     if args.command == "list" { endpoint = "list_tasks"; }
     elif args.command == "add" {
@@ -90,6 +100,16 @@ def main -> int {
         payload = {"task_id": args.id, "done": args.command == "done"};
     } elif args.command == "plan" {
         endpoint = "day_plan"; payload = {"day": args.day, "budget": args.minutes};
+    }
+    elif args.command == "study" {
+        endpoint = "log_study";
+        request_id = args.request_id or str(uuid4());
+        print("Study request ID (reuse for retries): " + request_id, file=sys.stderr);
+        payload = {"task_id": args.id, "minutes": args.minutes, "day": args.day, "request_id": request_id};
+    } elif args.command == "history" { endpoint = "list_sessions"; }
+    elif args.command == "week" {
+        endpoint = "week_plan";
+        payload = {"start": args.start, "budgets": [int(v.strip()) for v in args.budgets.split(",")]};
     }
     result = _request(server, "/function/" + endpoint, token, payload)["result"];
     if args.command == "list" {
@@ -108,6 +128,19 @@ def main -> int {
         for b in result["blocks"] { print(f"+{b['start']}m  {b['title']} ({b['minutes']}m focus)"); }
         print(f"Focus {result['study']}m / breaks {result['breaks']}m / unplanned {result['remaining']}m");
         if result["urgent_unplanned"] { print(f"WARNING: {result['urgent_unplanned']}m of due/overdue work does not fit."); }
+    } elif args.command == "study" {
+        print(f"Recorded {result['minutes']}m for {result['title']}; remaining estimate reduced by {result['credited']}m.");
+    } elif args.command == "history" {
+        if not result { print("No study records yet."); }
+        for s in result { print(f"{s['day']} | {s['title']} | studied {s['minutes']}m | reduced estimate {s['credited']}m"); }
+    } elif args.command == "week" {
+        print(result["rule"]);
+        for d in result["days"] {
+            print(f"{d['day']}: budget {d['budget']}m / focus {d['study']}m / breaks {d['breaks']}m");
+            for b in d["blocks"] { print(f"  +{b['start']}m {b['title']} ({b['minutes']}m){' LATE' if b['overdue'] else ''}"); }
+        }
+        for r in result["risks"] { print(f"WARNING: {r['title']} due {r['due']}: {r['minutes']}m {'already overdue' if r['overdue'] else 'cannot fit by deadline'}"); }
+        print(f"Unscheduled after this horizon: {result['remaining']}m");
     } else { print(f"Saved: {result['title']} (ID: {result['id']})"); }
     return 0;
 }

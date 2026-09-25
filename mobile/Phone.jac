@@ -1,5 +1,6 @@
 import from "@jac/mobui" { View, Text, TextInput, Pressable, ScrollView, StyleSheet, KeyboardAvoidingView, Platform }
 import from core.client { authenticate, rpc, today }
+import from .Progress { Progress }
 
 glob styles = StyleSheet.create({
     screen: {flex: 1, backgroundColor: "#10284a"},
@@ -22,7 +23,7 @@ glob styles = StyleSheet.create({
 def:pub Phone -> JsxElement {
     has base: str = "http://localhost:8001", token: str = "", username: str = "", password: str = "";
     has signup: bool = False, busy: bool = False, error: str = "", tab: str = "tasks";
-    has tasks: list[dict] = [], title: str = "", course: str = "", due: str = today(), minutes: str = "30", priority: str = "2";
+    has tasks: list[dict[str, any]] = [], title: str = "", course: str = "", due: str = today(), minutes: str = "30", priority: str = "2";
     has plan: any = None, budget: str = "120", day: str = today();
 
     async def load {
@@ -59,7 +60,7 @@ def:pub Phone -> JsxElement {
         } except Exception as err { error = str(err); }
         finally { busy = False; }
     }
-    async def complete(t: dict) {
+    async def complete(t: dict[str, any]) {
         if busy { return; }
         busy = True; error = "";
         try {
@@ -90,7 +91,7 @@ def:pub Phone -> JsxElement {
                 <Pressable disabled={busy} style={styles.secondary} onPress={lambda { signup = not signup; }}><Text style={styles.buttonText}>{"Use existing account" if signup else "New? Create account"}</Text></Pressable>
                 <Text style={styles.text}>Password: at least 8 characters. Session tokens stay in memory; tasks stay on the server.</Text>
             </View> if not token else <View style={{gap: 16}}>
-                <View style={styles.row}>{[<Pressable key={v} style={styles.button if tab == v else styles.secondary} onPress={lambda { tab = v; }}><Text style={styles.buttonText}>{v.capitalize()}</Text></Pressable> for v in ["tasks", "add", "focus"]]}</View>
+                <View style={styles.row}>{[<Pressable key={v} style={styles.button if tab == v else styles.secondary} onPress={lambda { tab = v; }}><Text style={styles.buttonText}>{v.capitalize()}</Text></Pressable> for v in ["tasks", "add", "focus", "progress"]]}</View>
                 {<View style={{gap: 14}}><Pressable disabled={busy} style={styles.secondary} onPress={refresh}><Text style={styles.buttonText}>Refresh from server</Text></Pressable>
                     {<Text style={styles.text}>No tasks yet. Add your first task.</Text> if not len(tasks) else <View/>}
                     {[<View key={t["id"]} style={styles.card}><Text style={styles.meta}>{t["course"] or "PERSONAL"}</Text><Text style={styles.title}>{t["title"]}</Text><Text style={styles.meta}>{"Completed" if t["done"] else ("Overdue" if t["due"] < today() else "Open")} · {t["due"]} · {str(t["minutes"])} min · P{str(t["priority"])}</Text>
@@ -99,7 +100,7 @@ def:pub Phone -> JsxElement {
                 {<View style={{gap: 14}}><Text style={styles.text}>Task title</Text><TextInput accessibilityLabel="Task title" style={styles.input} value={title} maxLength={160} onChangeText={lambda (v: str) { title = v; }}/>
                     <Text style={styles.text}>Course or area</Text><TextInput accessibilityLabel="Course" style={styles.input} value={course} maxLength={40} onChangeText={lambda (v: str) { course = v; }}/>
                     <Text style={styles.text}>Deadline (YYYY-MM-DD)</Text><TextInput accessibilityLabel="Deadline" style={styles.input} value={due} onChangeText={lambda (v: str) { due = v; }}/>
-                    <Text style={styles.text}>Estimated minutes (5–1440)</Text><TextInput accessibilityLabel="Minutes" style={styles.input} value={minutes} keyboardType="number-pad" onChangeText={lambda (v: str) { minutes = v; }}/>
+                    <Text style={styles.text}>Estimated minutes (1–1440)</Text><TextInput accessibilityLabel="Minutes" style={styles.input} value={minutes} keyboardType="number-pad" onChangeText={lambda (v: str) { minutes = v; }}/>
                     <Text style={styles.text}>Priority: 1 low · 2 medium · 3 high</Text><View style={styles.row}>{[<Pressable key={p} style={styles.button if priority == p else styles.secondary} onPress={lambda { priority = p; }}><Text style={styles.buttonText}>{p}</Text></Pressable> for p in ["1", "2", "3"]]}</View>
                     <Pressable disabled={busy} style={styles.button} onPress={save}><Text style={styles.buttonText}>Add task</Text></Pressable>
                 </View> if tab == "add" else <View/>}
@@ -111,6 +112,7 @@ def:pub Phone -> JsxElement {
                         {[<View key={str(i)} style={styles.card}><Text style={styles.meta}>Start +{str(b["start"])} min · {str(b["minutes"])} min focus</Text><Text style={styles.title}>{b["title"]}</Text></View> for (i, b) in enumerate(plan["blocks"])]}
                     </View> if plan else <View/>}
                 </View> if tab == "focus" else <View/>}
+                {<Progress base={base} token={token} tasks={tasks} onSaved={refresh}/> if tab == "progress" else <View/>}
                 <Pressable disabled={busy} style={styles.secondary} onPress={lambda { token = ""; tasks = []; plan = None; error = ""; title = ""; course = ""; }}><Text style={styles.buttonText}>Sign out</Text></Pressable>
             </View>}
         </ScrollView>

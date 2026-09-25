@@ -3,7 +3,7 @@ name = "maizeplan"
 version = "0.1.0"
 description = "A personal coursework planner across web, native mobile and CLI"
 default-app = "web"
-jac-version = "==0.37.17"
+jac-version = "==0.37.21"
 
 [dependencies]
 [dependencies.npm]
