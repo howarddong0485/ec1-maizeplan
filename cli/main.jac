@@ -36,12 +36,13 @@ def _parser -> argparse.ArgumentParser {
     listing = sub.add_parser("list");
     listing.add_argument("--all", action="store_true", help="Include completed tasks");
     listing.add_argument("--today", action="store_true", help="Only due or overdue tasks");
+    listing.add_argument("--archived", action="store_true", help="Show only archived tasks, including completed ones");
     add = sub.add_parser("add"); add.add_argument("title");
     add.add_argument("--course", `default="");
     add.add_argument("--due", required=True, help="YYYY-MM-DD");
     add.add_argument("--priority", `type=int, choices=[1, 2, 3], `default=2);
     add.add_argument("--minutes", `type=int, `default=30);
-    for name in ["done", "reopen"] {
+    for name in ["done", "reopen", "archive", "restore"] {
         cmd = sub.add_parser(name); cmd.add_argument("id", help="Full task ID from list --json");
     }
     plan = sub.add_parser("plan");
@@ -52,10 +53,21 @@ def _parser -> argparse.ArgumentParser {
     study.add_argument("--minutes", `type=int, required=True);
     study.add_argument("--day", `default=date.today().isoformat());
     study.add_argument("--request-id", `default="", help="Reuse this ID when retrying an uncertain request");
-    sub.add_parser("history", help="Show saved study records");
+    history = sub.add_parser("history", help="Show saved study records including undone records");
+    history.add_argument("--audit", action="store_true", help="Show the immutable correction trail");
+    for name in ["correct", "undo-study"] {
+        correction = sub.add_parser(name, help="Correct/restore or undo a study record");
+        correction.add_argument("id", help="Study record ID from history");
+        correction.add_argument("--minutes", `type=int, required=name == "correct");
+        correction.add_argument("--day", help="Corrected date; defaults to the current record date");
+        correction.add_argument("--version", `type=int, help="Expected record version; reuse the printed version for a retry");
+        correction.add_argument("--request-id", `default="");
+    }
+    capacity = sub.add_parser("capacity", help="View or save your Monday–Sunday capacity");
+    capacity.add_argument("--budgets", help="Seven comma-separated capacities, Monday through Sunday");
     week = sub.add_parser("week", help="Plan 1–14 days with deadline warnings");
     week.add_argument("--start", `default=date.today().isoformat());
-    week.add_argument("--budgets", required=True, help="Comma-separated daily minutes, e.g. 60,90,0,60,120,0,30");
+    week.add_argument("--budgets", help="Override saved capacity with 1–14 daily minutes, starting on --start");
     return p;
 }
 
@@ -90,7 +102,7 @@ def main -> int {
     if not token { raise RuntimeError("Sign in first: jac run cli login YOUR_USERNAME"); }
     payload: dict[str, any] = {};
     endpoint = "";
-    if args.command == "list" { endpoint = "list_tasks"; }
+    if args.command == "list" { endpoint = "list_tasks"; payload = {"include_archived": args.archived}; }
     elif args.command == "add" {
         endpoint = "save_task";
         payload = {"title": args.title, "course": args.course, "due": args.due,
@@ -98,6 +110,9 @@ def main -> int {
     } elif args.command in ["done", "reopen"] {
         endpoint = "set_done";
         payload = {"task_id": args.id, "done": args.command == "done"};
+    } elif args.command in ["archive", "restore"] {
+        endpoint = "archive_task";
+        payload = {"task_id": args.id, "archived": args.command == "archive"};
     } elif args.command == "plan" {
         endpoint = "day_plan"; payload = {"day": args.day, "budget": args.minutes};
     }
@@ -107,19 +122,38 @@ def main -> int {
         print("Study request ID (reuse for retries): " + request_id, file=sys.stderr);
         payload = {"task_id": args.id, "minutes": args.minutes, "day": args.day, "request_id": request_id};
     } elif args.command == "history" { endpoint = "list_sessions"; }
+    elif args.command in ["correct", "undo-study"] {
+        rows = _request(server, "/function/list_sessions", token, {})["result"];
+        matches = [s for s in rows if s["id"] == args.id];
+        if not matches { raise ValueError("Study record not found in your account."); }
+        s = matches[0];
+        version = s["version"] if args.version is None else args.version;
+        request_id = args.request_id or str(uuid4());
+        print(f"Correction request ID: {request_id}; version: {version}. Reuse both for retries.", file=sys.stderr);
+        endpoint = "revise_study";
+        payload = {"session_id": args.id, "minutes": s["minutes"] if args.minutes is None else args.minutes,
+            "day": args.day or s["day"], "voided": args.command == "undo-study",
+            "expected_version": version, "request_id": request_id};
+    } elif args.command == "capacity" {
+        endpoint = "get_capacity";
+        if args.budgets {
+            endpoint = "save_capacity"; payload = {"budgets": [int(v.strip()) for v in args.budgets.split(",")]};
+        }
+    }
     elif args.command == "week" {
         endpoint = "week_plan";
-        payload = {"start": args.start, "budgets": [int(v.strip()) for v in args.budgets.split(",")]};
+        payload = {"start": args.start};
+        if args.budgets is not None { payload["budgets"] = [int(v.strip()) for v in args.budgets.split(",")]; }
     }
     result = _request(server, "/function/" + endpoint, token, payload)["result"];
     if args.command == "list" {
-        result = [t for t in result if (args.all or not t["done"]) and (not args.today or t["due"] <= date.today().isoformat())];
+        result = [t for t in result if t["archived"] == args.archived and (args.archived or args.all or not t["done"]) and (not args.today or t["due"] <= date.today().isoformat())];
     }
     if args.json { print(json.dumps(result, indent=2, ensure_ascii=False)); return 0; }
     if args.command == "list" {
         if not result { print("No tasks match."); }
         for t in result {
-            status = "done" if t["done"] else "open";
+            status = "archived" if t["archived"] else ("done" if t["done"] else "open");
             print(f"[{status}] {t['title']} | {t['course']} | due {t['due']} | {t['minutes']}m | P{t['priority']}");
             print("  ID: " + t["id"]);
         }
@@ -132,10 +166,28 @@ def main -> int {
         print(f"Recorded {result['minutes']}m for {result['title']}; remaining estimate reduced by {result['credited']}m.");
     } elif args.command == "history" {
         if not result { print("No study records yet."); }
-        for s in result { print(f"{s['day']} | {s['title']} | studied {s['minutes']}m | reduced estimate {s['credited']}m"); }
+        print(f"Active focus total: {sum(s['minutes'] for s in result if not s['voided'])}m");
+        for s in result {
+            print(f"{s['day']} | {s['title']} | studied {s['minutes']}m | reduced estimate {s['credited']}m | {'UNDONE' if s['voided'] else 'active'}");
+            print(f"  ID: {s['id']} | version: {s['version']}");
+            if args.audit {
+                print(f"  Original: {s['original_day']} | {s['original_minutes']}m");
+                for c in s["changes"] { print(f"  Revision {c['version']}: {c['day']} | {c['minutes']}m | {'undone' if c['voided'] else 'active'} | remaining adjustment {c['remaining_delta']}m | {'estimate adjusted' if c['estimate_adjusted'] else 'manual estimate preserved'}"); }
+            }
+        }
+    } elif args.command in ["correct", "undo-study"] {
+        print(f"Study record {'undone' if result['voided'] else 'corrected/restored'}; remaining adjustment {result['remaining_delta']}m.");
+        if not result["estimate_adjusted"] { print("Your newer manual estimate was preserved; only history changed."); }
+    } elif args.command == "capacity" {
+        print("Saved weekly capacity (including breaks):" if result["saved"] else "Default weekly capacity (not yet saved):");
+        for (i, name) in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]) { print(f"{name}: {result['budgets'][i]}m"); }
     } elif args.command == "week" {
         print(result["rule"]);
+        scale = max([d["budget"] for d in result["days"]] + [1]);
+        print("Workload: # focus, + breaks, . free (shared minutes scale)");
         for d in result["days"] {
+            bar = "#" * int(d["study"] * 30 / scale) + "+" * int(d["breaks"] * 30 / scale) + "." * int((d["budget"] - d["elapsed"]) * 30 / scale);
+            print("[" + bar.ljust(30) + "] " + ("DAY OFF" if not d["budget"] else ""));
             print(f"{d['day']}: budget {d['budget']}m / focus {d['study']}m / breaks {d['breaks']}m");
             for b in d["blocks"] { print(f"  +{b['start']}m {b['title']} ({b['minutes']}m){' LATE' if b['overdue'] else ''}"); }
         }

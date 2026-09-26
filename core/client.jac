@@ -55,3 +55,18 @@ def:pub day_offset(day: str, offset: int) -> str {
 def:pub study_request_id() -> str {
     return str(Date.now()) + "-" + str(Math.random());
 }
+
+def:pub weekday_index(day: str) -> int {
+    value = new(Date, day + "T12:00:00");
+    return int((value.getDay() + 6) % 7);
+}
+
+def:pub capacity_dates(pattern: list[int], start: str) -> list[str] {
+    first = weekday_index(start);
+    return [str(pattern[(first + i) % 7]) for i in range(7)];
+}
+
+def:pub capacity_pattern(values: list[str], start: str) -> list[int] {
+    first = weekday_index(start);
+    return [int(values[(i - first + 7) % 7]) for i in range(7)];
+}

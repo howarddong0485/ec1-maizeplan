@@ -4,30 +4,35 @@ import from .Progress { Progress }
 def:pub Planner -> JsxElement {
     has token: str = "", username: str = "", password: str = "", signup: bool = False;
     has tasks: list[dict[str, any]] = [], error: str = "", busy: bool = False;
+    has history: list[dict[str, any]] = [];
     has title: str = "", course: str = "", due: str = today(), priority: str = "2", minutes: str = "60", editing: str = "";
     has day: str = today(), budget: str = "120", plan: any = None;
     has filter: str = "open", search: str = "", notice: str = "";
 
     async def reload {
         fresh: any = None;
-        fresh = await rpc(window.location.origin, token, "list_tasks", {});
-        tasks = fresh;
+        sessions: any = None;
+        fresh = await rpc(window.location.origin, token, "list_tasks", {"include_archived": True});
+        sessions = await rpc(window.location.origin, token, "list_sessions", {});
+        tasks = fresh; history = sessions; plan = None;
     }
     async def login(e: FormEvent) {
         e.preventDefault();
         busy = True; error = "";
         next_token: str = "";
         fresh: any = None;
+        sessions: any = None;
         try {
             next_token = await authenticate(window.location.origin, username.strip(), password, signup);
-            fresh = await rpc(window.location.origin, next_token, "list_tasks", {});
-            token = next_token; tasks = fresh; password = "";
+            fresh = await rpc(window.location.origin, next_token, "list_tasks", {"include_archived": True});
+            sessions = await rpc(window.location.origin, next_token, "list_sessions", {});
+            token = next_token; tasks = fresh; history = sessions; password = "";
         } except Exception as err { error = str(err); }
         finally { busy = False; }
     }
     async def refresh {
-        busy = True; error = "";
-        try { await reload(); plan = None; notice = "Up to date with your server."; }
+        busy = True; error = ""; notice = "";
+        try { await reload(); notice = "Tasks and study history are up to date. Generate plans again to use the latest data."; }
         except Exception as err { error = str(err); }
         finally { busy = False; }
     }
@@ -50,6 +55,15 @@ def:pub Planner -> JsxElement {
         } except Exception as err { error = str(err); }
         finally { busy = False; }
     }
+    async def archive(t: dict[str, any]) {
+        busy = True; error = "";
+        try {
+            await rpc(window.location.origin, token, "archive_task", {"task_id": t["id"], "archived": not t["archived"]});
+            if editing == t["id"] { editing = ""; title = ""; }
+            await reload(); notice = "Task restored." if t["archived"] else "Task archived. Its study history is preserved; restore it from Archived.";
+        } except Exception as err { error = str(err); }
+        finally { busy = False; }
+    }
     async def schedule(e: FormEvent) {
         e.preventDefault(); busy = True; error = "";
         try { plan = await rpc(window.location.origin, token, "day_plan", {"day": day, "budget": int(budget)}); }
@@ -63,13 +77,13 @@ def:pub Planner -> JsxElement {
         if field { field.focus(); }
     }
     def logout {
-        token = ""; tasks = []; plan = None; error = ""; notice = "";
+        token = ""; tasks = []; history = []; plan = None; error = ""; notice = "";
         title = ""; course = ""; editing = "";
     }
-    visible = [t for t in tasks if (filter == "all" or (filter == "done" and t["done"]) or (filter == "open" and not t["done"])) and (search.lower() in (t["title"] + " " + t["course"]).lower())];
-    pending = [t for t in tasks if not t["done"]];
+    visible = [t for t in tasks if (t["archived"] if filter == "archived" else (not t["archived"] and (filter == "all" or (filter == "done" and t["done"]) or (filter == "open" and not t["done"])))) and (search.lower() in (t["title"] + " " + t["course"]).lower())];
+    pending = [t for t in tasks if not t["done"] and not t["archived"]];
     overdue = [t for t in pending if t["due"] < today()];
-    completed = len(tasks) - len(pending);
+    completed = len([t for t in tasks if t["done"] and not t["archived"]]);
 
     if not token {
         return <main className="auth-shell">
@@ -109,11 +123,11 @@ def:pub Planner -> JsxElement {
             <p className="notice" role="status">{notice}</p>
             <div className="columns"><section className="task-area">
                 <div className="section-heading"><h2>Your coursework</h2><span className="small">Sorted by deadline, then priority</span></div>
-                <div className="filters"><div className="tabs">{[<button key={v} aria-pressed={filter == v} className={"active" if filter == v else ""} onClick={lambda { filter = v; }}>{v.capitalize()}</button> for v in ["open", "done", "all"]]}</div><input aria-label="Search tasks and courses" placeholder="Find a task or course" value={search} onChange={lambda (e: ChangeEvent) { search = e.target.value; }}/></div>
+                <div className="filters"><div className="tabs">{[<button key={v} aria-pressed={filter == v} className={"active" if filter == v else ""} onClick={lambda { filter = v; }}>{v.capitalize()}</button> for v in ["open", "done", "all", "archived"]]}</div><input aria-label="Search tasks and courses" placeholder="Find a task or course" value={search} onChange={lambda (e: ChangeEvent) { search = e.target.value; }}/></div>
                 <div className="task-list">{[<article key={t["id"]} className={"task completed" if t["done"] else "task"}>
-                    <button className="check" aria-label={"Reopen " + t["title"] if t["done"] else "Complete " + t["title"]} aria-pressed={t["done"]} disabled={busy} onClick={lambda { complete(t); }}>{"✓" if t["done"] else "○"}</button>
+                    {<button className="check" aria-label={"Reopen " + t["title"] if t["done"] else "Complete " + t["title"]} aria-pressed={t["done"]} disabled={busy} onClick={lambda { complete(t); }}>{"✓" if t["done"] else "○"}</button> if not t["archived"] else <span className="pill">Archived</span>}
                     <div className="task-body"><span className="course">{t["course"] or "PERSONAL"}</span><h3>{t["title"]}</h3><div className="meta"><span className={"danger" if t["due"] < today() and not t["done"] else ""}>{"Overdue · " if t["due"] < today() and not t["done"] else "Due "}{t["due"]}</span><span>{str(t["minutes"])} min</span><span>{["", "Low", "Medium", "High"][t["priority"]]} priority</span></div></div>
-                    <button className="text-button" disabled={busy} onClick={lambda { edit(t); }}>Edit</button>
+                    <div className="task-actions">{<button className="text-button" disabled={busy} onClick={lambda { edit(t); }}>Edit</button> if not t["archived"] else <span/>}<button className="text-button" disabled={busy} onClick={lambda { archive(t); }}>{"Restore task" if t["archived"] else "Archive task"}</button></div>
                 </article> for t in visible]}</div>
                 {<div className="empty"><h3>{"Nothing matches this view." if len(tasks) else "A clear desk. A fresh start."}</h3><p>{"Try a different filter or search." if len(tasks) else "Add your first assignment on the right."}</p></div> if not len(visible) else <span/>}
                 <section className="focus"><div className="section-heading"><div><p className="eyebrow">WORK WITH YOUR ENERGY</p><h2>Build a focus plan</h2></div><span className="pill">25 min focus / 5 min break</span></div>
@@ -123,7 +137,7 @@ def:pub Planner -> JsxElement {
                         <ol className="timeline">{[<li key={str(i)}><span className="time">+{str(b["start"])} min</span><div><strong>{b["title"]}</strong><p>{b["course"] or "Personal"} · {str(b["minutes"])} min focus{" · after a 5-min break" if b["break_before"] else ""}</p></div></li> for (i, b) in enumerate(plan["blocks"])]}</ol>
                         {<p>No open tasks. Enjoy the space in your day.</p> if not len(plan["blocks"]) else <span/>}</div> if plan else <p className="small">Uses every open task, ordered by deadline. Includes breaks in your time budget. Nothing is marked complete automatically.</p>}
                 </section>
-                <Progress base={window.location.origin} token={token} tasks={tasks} onSaved={refresh}/>
+                <Progress base={window.location.origin} token={token} tasks={tasks} history={history} onSaved={reload}/>
             </section><aside className="editor"><p className="eyebrow">GET IT OUT OF YOUR HEAD</p><h2>{"Edit task" if editing else "Add a task"}</h2>
                 <form onSubmit={save}><label htmlFor="title">What needs doing?</label><input id="title" placeholder="Finish the bandits reading" required={True} maxLength={160} value={title} onChange={lambda (e: ChangeEvent) { title = e.target.value; }}/>
                     <label htmlFor="course">Course or area</label><input id="course" placeholder="EECS 449" maxLength={40} value={course} onChange={lambda (e: ChangeEvent) { course = e.target.value; }}/>

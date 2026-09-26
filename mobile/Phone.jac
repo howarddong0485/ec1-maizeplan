@@ -24,22 +24,28 @@ def:pub Phone -> JsxElement {
     has base: str = "http://localhost:8001", token: str = "", username: str = "", password: str = "";
     has signup: bool = False, busy: bool = False, error: str = "", tab: str = "tasks";
     has tasks: list[dict[str, any]] = [], title: str = "", course: str = "", due: str = today(), minutes: str = "30", priority: str = "2";
+    has history: list[dict[str, any]] = [];
+    has show_archived: bool = False;
     has plan: any = None, budget: str = "120", day: str = today();
 
     async def load {
         result: any = None;
-        result = await rpc(base, token, "list_tasks", {});
-        tasks = result;
+        sessions: any = None;
+        result = await rpc(base, token, "list_tasks", {"include_archived": True});
+        sessions = await rpc(base, token, "list_sessions", {});
+        tasks = result; history = sessions; plan = None;
     }
     async def login {
         if busy { return; }
         busy = True; error = "";
         next_token: str = "";
         result: any = None;
+        sessions: any = None;
         try {
             next_token = await authenticate(base, username.strip(), password, signup);
-            result = await rpc(base, next_token, "list_tasks", {});
-            token = next_token; tasks = result; password = "";
+            result = await rpc(base, next_token, "list_tasks", {"include_archived": True});
+            sessions = await rpc(base, next_token, "list_sessions", {});
+            token = next_token; tasks = result; history = sessions; password = "";
         } except Exception as err { error = str(err); }
         finally { busy = False; }
     }
@@ -69,6 +75,15 @@ def:pub Phone -> JsxElement {
         } except Exception as err { error = str(err); }
         finally { busy = False; }
     }
+    async def archive(t: dict[str, any]) {
+        if busy { return; }
+        busy = True; error = "";
+        try {
+            await rpc(base, token, "archive_task", {"task_id": t["id"], "archived": not t["archived"]});
+            await load();
+        } except Exception as err { error = str(err); }
+        finally { busy = False; }
+    }
     async def schedule {
         if busy { return; }
         busy = True; error = "";
@@ -93,9 +108,11 @@ def:pub Phone -> JsxElement {
             </View> if not token else <View style={{gap: 16}}>
                 <View style={styles.row}>{[<Pressable key={v} style={styles.button if tab == v else styles.secondary} onPress={lambda { tab = v; }}><Text style={styles.buttonText}>{v.capitalize()}</Text></Pressable> for v in ["tasks", "add", "focus", "progress"]]}</View>
                 {<View style={{gap: 14}}><Pressable disabled={busy} style={styles.secondary} onPress={refresh}><Text style={styles.buttonText}>Refresh from server</Text></Pressable>
-                    {<Text style={styles.text}>No tasks yet. Add your first task.</Text> if not len(tasks) else <View/>}
+                    <Pressable accessibilityRole="button" style={styles.secondary} onPress={lambda { show_archived = not show_archived; }}><Text style={styles.buttonText}>{"Show active tasks" if show_archived else "Show archived tasks"}</Text></Pressable>
+                    {<Text style={styles.text}>{"No archived tasks." if show_archived else "No active tasks. Add a task or restore one from the archive."}</Text> if not len([t for t in tasks if t["archived"] == show_archived]) else <View/>}
                     {[<View key={t["id"]} style={styles.card}><Text style={styles.meta}>{t["course"] or "PERSONAL"}</Text><Text style={styles.title}>{t["title"]}</Text><Text style={styles.meta}>{"Completed" if t["done"] else ("Overdue" if t["due"] < today() else "Open")} · {t["due"]} · {str(t["minutes"])} min · P{str(t["priority"])}</Text>
-                        <Pressable disabled={busy} style={styles.secondary} onPress={lambda { complete(t); }}><Text style={styles.buttonText}>{"Reopen task" if t["done"] else "Mark complete"}</Text></Pressable></View> for t in tasks]}
+                        {<Pressable disabled={busy} style={styles.secondary} onPress={lambda { complete(t); }}><Text style={styles.buttonText}>{"Reopen task" if t["done"] else "Mark complete"}</Text></Pressable> if not t["archived"] else <Text style={styles.meta}>Archived · excluded from plans</Text>}
+                        <Pressable accessibilityRole="button" disabled={busy} style={styles.secondary} onPress={lambda { archive(t); }}><Text style={styles.buttonText}>{"Restore task" if t["archived"] else "Archive task"}</Text></Pressable></View> for t in tasks if t["archived"] == show_archived]}
                 </View> if tab == "tasks" else <View/>}
                 {<View style={{gap: 14}}><Text style={styles.text}>Task title</Text><TextInput accessibilityLabel="Task title" style={styles.input} value={title} maxLength={160} onChangeText={lambda (v: str) { title = v; }}/>
                     <Text style={styles.text}>Course or area</Text><TextInput accessibilityLabel="Course" style={styles.input} value={course} maxLength={40} onChangeText={lambda (v: str) { course = v; }}/>
@@ -112,8 +129,8 @@ def:pub Phone -> JsxElement {
                         {[<View key={str(i)} style={styles.card}><Text style={styles.meta}>Start +{str(b["start"])} min · {str(b["minutes"])} min focus</Text><Text style={styles.title}>{b["title"]}</Text></View> for (i, b) in enumerate(plan["blocks"])]}
                     </View> if plan else <View/>}
                 </View> if tab == "focus" else <View/>}
-                {<Progress base={base} token={token} tasks={tasks} onSaved={refresh}/> if tab == "progress" else <View/>}
-                <Pressable disabled={busy} style={styles.secondary} onPress={lambda { token = ""; tasks = []; plan = None; error = ""; title = ""; course = ""; }}><Text style={styles.buttonText}>Sign out</Text></Pressable>
+                {<Progress base={base} token={token} tasks={tasks} history={history} onSaved={load}/> if tab == "progress" else <View/>}
+                <Pressable disabled={busy} style={styles.secondary} onPress={lambda { token = ""; tasks = []; history = []; plan = None; error = ""; title = ""; course = ""; }}><Text style={styles.buttonText}>Sign out</Text></Pressable>
             </View>}
         </ScrollView>
     </KeyboardAvoidingView>;

@@ -81,10 +81,24 @@ test "days off overdue work and future deadlines are distinct" {
     p = _make_week(rows, "2026-10-05", [0, 40]);
     assert p["days"][0]["blocks"] == [];
     assert p["days"][0]["budget"] == 0;
+    assert p["days"][0]["urgent_unplanned"] == 10;
+    assert p["days"][1]["late"] == 10;
     assert p["overdue_minutes"] == 10;
     assert p["deadline_shortfall"] == 0;
     assert len(p["risks"]) == 1;
     assert p["remaining"] == 60;
+}
+
+test "archived work excluded from day and week plans" {
+    t = {"id": "a", "title": "Archived", "course": "A", "due": "2026-10-01", "priority": 3, "minutes": 100, "done": False, "archived": True};
+    p = _make_plan([t], "2026-10-05", 120);
+    assert p["blocks"] == [];
+    assert p["remaining"] == 0;
+    p = _make_week([t], "2026-10-05", [0, 60]);
+    assert p["remaining"] == 0;
+    assert p["risks"] == [];
+    assert p["days"][0]["urgent_unplanned"] == 0;
+    assert t["minutes"] == 100;
 }
 
 test "week validates budgets and dates" {

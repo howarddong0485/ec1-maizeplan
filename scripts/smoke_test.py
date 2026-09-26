@@ -107,7 +107,7 @@ def main():
     assert cli("plan", "--day", "2026-10-05", "--minutes", "40") == rpc(
         "day_plan", {"day": "2026-10-05", "budget": 40}), "Plans differ across clients"
     status, body = call(base, "/function/save_task", {
-        **{k: v for k, v in updated.items() if k not in ("id", "done")},
+        **{k: updated[k] for k in ("title", "course", "due", "priority", "minutes")},
         "task_id": task["id"]}, tokens[1])
     assert status >= 400 or not body["ok"], "Cross-account edit succeeded"
     cli("done", task["id"])

@@ -11,11 +11,12 @@ MaizePlan is a personal coursework planner written in Jac. It turns assignment d
 
 - Add tasks with a course, deadline, priority, and estimated remaining minutes.
 - Edit tasks on the web; mark complete or reopen from web, mobile, or CLI.
-- Web search, open/completed filters, and overdue/completion counts.
+- Archive/restore tasks on every interface; web search, open/completed/archived filters, and overdue/completion counts.
 - A transparent focus planner: earliest deadline first, priority as a tie-breaker, up to 25 minutes of work followed by a 5-minute break.
 - The time budget **includes breaks**. Large tasks can receive partial blocks. Due/overdue work that cannot fit is explicitly reported.
 - Record actual study sessions, automatically reduce remaining effort, and complete tasks when the remainder reaches zero. History is shared across interfaces.
-- Plan seven days with separate daily capacities, days off, and deadline shortfall warnings that distinguish late catch-up from on-time work.
+- Correct, undo, or restore study records with an immutable audit trail and corresponding remaining-effort adjustments.
+- Save a personal Monday–Sunday capacity shared across devices. Plan seven days with days off, a focus/break/free-capacity chart, and deadline warnings that distinguish late catch-up from on-time work.
 - Native mobile screens use Jac MobUI / React Native, not an HTML webview.
 - Account-isolated graph persistence; anonymous access to planning endpoints is not allowed.
 - No LLM key, paid API, or external calendar required.
@@ -82,7 +83,16 @@ jac run cli --json list
 jac run cli plan --day 2026-10-05 --minutes 120
 jac run cli study FULL_TASK_ID --minutes 25
 jac run cli history
+jac run cli history --audit
+jac run cli correct FULL_STUDY_RECORD_ID --minutes 20 --day 2026-09-25
+jac run cli undo-study FULL_STUDY_RECORD_ID
+jac run cli capacity --budgets 60,90,0,120,60,0,30
+jac run cli capacity
+jac run cli week --start 2026-10-05
 jac run cli week --start 2026-10-05 --budgets 60,90,0,120,60,0,30
+jac run cli archive FULL_TASK_ID
+jac run cli list --archived
+jac run cli restore FULL_TASK_ID
 jac run cli done FULL_TASK_ID
 jac run cli reopen FULL_TASK_ID
 jac run cli logout
@@ -98,16 +108,36 @@ Passwords are entered using a hidden prompt and never saved. CLI login stores a 
 
 ## Study progress and multi-day planning
 
-On the web, use **Record your study** and **Seven-day workload plan** below the daily focus planner. On mobile, open **Progress**. The CLI provides `study`, `history`, and `week`.
+On the web, use **Record your study** and **Seven-day workload plan** below the daily focus planner. On mobile, open **Progress**. The CLI provides `study`, `history`, `correct`, `undo-study`, `capacity`, and `week`.
 
 1. Choose an open task, enter the study date and actual focus minutes (1–1440, excluding breaks), then record the session. Dates cannot be later than the server's current date. A 90-minute task becomes 65 minutes after a 25-minute session.
-2. History preserves actual minutes and the amount deducted. Recording 100 minutes against 65 remaining preserves 100 actual minutes, deducts 65, and completes the task at zero. To reopen a zero-minute task, first edit its remaining estimate on the web, then reopen it. Study history is append-only in this version.
-3. Set the forecast start date and each day's available time. Use 0 for a day off or 5–720 minutes including breaks. Web/mobile show seven days; CLI/API accept 1–14 days. The scheduler carries unfinished work forward, with breaks restarting each day.
+2. History preserves actual minutes and the amount deducted. Recording 100 minutes against 65 remaining preserves 100 actual minutes, deducts 65, and completes the task at zero. Correct or undo a record as described below; to add a new remaining estimate to a completed task, edit it on the web and reopen it.
+3. Set the forecast start date and each day's available time. Use 0 for a day off or 5–720 minutes including breaks. **Save weekly capacity** stores the seven inputs as your repeating weekday routine. Web/mobile show seven days; CLI/API accept 1–14 explicit daily budgets. The scheduler carries unfinished work forward, with breaks restarting each day.
 4. Review **Deadline shortfall**, **Already overdue**, and **unscheduled** minutes. A task due today cannot be considered on time merely because tomorrow has capacity. Warnings cover deadlines through the forecast's final day; later deadlines are outside that assessment. Blocks after their deadline are marked as catch-up.
 
-Refresh tasks/history after another interface saves a session, and regenerate the forecast after task changes. Daily capacities and forecasts are temporary UI inputs, not saved calendars. Backdated sessions reduce the current estimate; they do not reconstruct historical plans.
+After another interface changes tasks or study history, use the web's **Refresh all devices’ changes**, mobile's **Refresh from server**, or **Refresh tasks & study history** in Progress. Each reloads both tasks and study history. Refreshing, editing, completing, archiving, or changing study records clears previous plans; regenerate them from the updated tasks. Refreshing keeps the weekly start date and daily capacities in the current Progress screen. Use **Load saved capacity** to fetch capacity changes made on another device. Forecasts are not saved calendars. Backdated sessions reduce the current estimate; they do not reconstruct historical plans.
 
 For an uncertain CLI submission, retry with the same fields and the request ID printed to stderr: `jac run cli study FULL_TASK_ID --minutes 25 --day YYYY-MM-DD --request-id PREVIOUS_ID`. A previously saved request returns its existing record without deducting twice. Web/mobile retain the request ID after a failed submission while the fields remain unchanged; changing fields or reloading starts a new request.
+
+### Saved capacity and workload chart
+
+The saved routine uses **Monday through Sunday**, including in `capacity --budgets`. A seven-day forecast automatically rotates it to the selected start date: starting on Wednesday uses Wednesday's capacity first. The initial unsaved suggestion is 60 minutes on weekdays and zero on weekends. Changing the start date reloads the current routine; unsaved edits apply only to the current forecast. CLI `week` without `--budgets` uses the saved routine; an explicit `--budgets` starts on `--start` and does not overwrite it.
+
+The web/mobile chart shows focus time, breaks, and unused capacity on one shared minutes scale; the CLI prints a text chart. Each day includes exact counts, days off, late catch-up, and due/overdue work still remaining. Spare time later in the week does not remove an earlier deadline shortfall. Generating a chart does not change task estimates.
+
+### Correct or undo study records
+
+Choose **Correct record** to edit the date or actual minutes, **Undo record** to exclude it from totals, or **Restore record** to bring it back. The CLI uses the study record ID printed by `history`; `correct` also restores an undone record. Originals are retained, and every successful correction adds a revision visible in **view audit trail** or `history --audit`.
+
+The server restores the record's previously credited minutes before applying its replacement, capped by the available remaining estimate. For example, a 25-minute record against a 90-minute task leaves 65; correcting it to 10 leaves 80; undoing it leaves 90. Undoing a 100-minute record that deducted only 30 restores 30, not 100. Automatically completed tasks reopen when effort is restored; an explicit manual completion is preserved.
+
+If the task's remaining estimate was manually changed after the original record, its corrections change history only and preserve that newer estimate. The UI reports this outcome. A stale record version is rejected and requires refreshing history. For an uncertain CLI correction, reuse the printed `--request-id` **and** `--version` together with the same date/minutes/operation. Sequential retries, including after restart, do not apply the adjustment twice. The same original `study` request also returns the record's current effective state after later revisions.
+
+### Archive tasks without losing history
+
+Use **Archive task** on web/mobile or `archive` in the CLI. Archived tasks leave the active list, summary counts, daily plans, and weekly plans. **Archived** on the web, **Show archived tasks** on mobile, and `list --archived` in the CLI show them again. **Restore task** / `restore` retains their remaining effort and completion state.
+
+Archiving preserves study records and their audit trail. Existing records can still be corrected while a task is archived; restore the task before editing its details, changing completion, or recording new study time. Archiving is reversible and does not delete data.
 
 ## Mobile app
 
@@ -128,7 +158,7 @@ Local versus cloud describes **where compilation happens**, not a different mobi
 
 The detailed phone workflow below uses Expo Go. Custom development builds and EAS distribution are alternatives requiring their own configuration; this repository does not include a published cloud build or signed binary. See Expo's [development-build overview](https://docs.expo.dev/develop/development-builds/introduction/), [cloud build setup](https://docs.expo.dev/build/setup/), and [local build overview](https://docs.expo.dev/guides/local-app-overview/).
 
-You may use VS Code for every route. Local iOS compilation/simulators require Apple's Xcode toolchain. The measured mobile coverage is the React Native Web build and UI/backend workflow. See [VALIDATION.md](VALIDATION.md).
+You may use VS Code for every route. Local iOS compilation/simulators require Apple's Xcode toolchain. The author has confirmed mobile-app reproduction; the independently measured mobile coverage includes the React Native Web build and UI/backend workflow. See [VALIDATION.md](VALIDATION.md) for the distinction.
 
 ### 1. Prepare a compatible phone client
 
@@ -188,10 +218,10 @@ Expo's [device-start guide](https://docs.expo.dev/get-started/start-developing/)
 
 ### 5. Use the mobile screens
 
-- **Tasks:** view course, deadline, estimate and priority; tap **Mark complete** or **Reopen task**. Tap **Refresh from server** after changing tasks on another interface.
+- **Tasks:** view course, deadline, estimate and priority; complete/reopen or archive/restore tasks. Tap **Refresh from server** after changing tasks on another interface.
 - **Add:** enter a title, optional course, `YYYY-MM-DD` deadline, estimate of 1–1440 minutes, and priority 1–3; tap **Add task**.
 - **Focus:** enter a planning date and a budget of 5–720 minutes; tap **Make my plan**. The budget includes breaks, and due/overdue work that does not fit is reported.
-- **Progress:** record study sessions, refresh shared history, and generate a seven-day plan with daily capacities and deadline warnings.
+- **Progress:** record, correct, undo, or restore study sessions; view the audit trail; save weekly capacity and generate its workload chart with deadline warnings.
 - **Sign out:** ends the in-memory session. Tasks remain on the backend; reopening/reloading the app requires signing in again.
 
 For a cross-device demo, add a task on the web, refresh Tasks on the phone, complete it on the phone, and refresh the web's Done view. Run `jac run cli list --all` from the **original project directory** to see the same task. Reopen it with `jac run cli reopen FULL_TASK_ID`, then refresh the phone. No automatic live synchronization is implemented.
@@ -237,10 +267,10 @@ See `jac guide jac-mobile-app` for platform prerequisites and the `android_build
 
 | Component | Source | Responsibility |
 |---|---|---|
-| Jac server | `core/api.jac`, `core/planning.jac` | Validate and persist tasks under the authenticated user's root; store study records and generate daily/multi-day plans |
-| Web | `web/` | Full task editing, search/filter, task summary, study history and daily/weekly planning |
-| Native mobile | `mobile/` | Quick capture, check/complete/reopen, focus plan, study records and weekly plan; MobUI native controls |
-| CLI | `cli/main.jac` | Terminal capture, listing, completion/reopening, study/history, daily/multi-day planning and JSON output |
+| Jac server | `core/api.jac`, `core/planning.jac` | Persist per-account tasks, archives, study revisions and weekly capacity; generate daily/multi-day plans |
+| Web | `web/` | Task editing/filtering, archive/restore, study corrections/audit, saved capacity and workload chart |
+| Native mobile | `mobile/` | Capture, complete/reopen, archive/restore, study corrections/audit, saved capacity and workload chart; MobUI controls |
+| CLI | `cli/main.jac` | Task lifecycle, study/history/corrections, saved capacity, daily/multi-day planning, text chart and JSON output |
 | Shared client transport | `core/client.jac` | Web/mobile login and HTTP requests to the explicitly selected backend |
 
 `web/main.jac` imports each planning endpoint so Jac registers it at `/function/<name>`. The clients POST parameter JSON and read Jac's `data.result` envelope. Web/mobile share transport code; CLI uses Python's standard HTTP library **from Jac**. All planning logic lives on the server—there are no independent browser/phone/CLI task stores to drift apart.
@@ -249,13 +279,13 @@ The API declarations use `:protect`: project-visible, but still authenticated. U
 
 ## Why this project stands out
 
-The key design choice is an achievable plan, not a longer task list. The scheduler accounts for recovery breaks, partially schedules large assignments, and makes overload visible. The study log closes the loop: actual work reduces the next plan, while daily capacities expose deadline shortfalls before the week fills up. Its deterministic rules are understandable and testable. Different interfaces suit different moments: organize on the web, check off on a phone, and capture from a terminal. Honest limitations and reproducible verification are part of the design.
+The scheduler accounts for recovery breaks, partially schedules large assignments, and makes deadline shortfalls visible. Actual study reduces the next plan; corrections and undo make that record maintainable. Saved weekday capacity and the workload chart connect the plan to a personal routine. Archives keep the active workspace useful without discarding history. These rules and data are shared across web, phone, and terminal, with reproducible tests for accounting, persistence, and synchronization.
 
 ## Tests and demonstration
 
 ```bash
 jac test core/planning.jac
-jac build --check_only
+jac check
 jac build web
 jac build --platform web mobile
 ```
@@ -265,20 +295,25 @@ With the real backend running, run:
 ```bash
 python3 scripts/smoke_test.py
 python3 scripts/feature_test.py
+python3 scripts/lifecycle_test.py
 ```
 
-This creates two uniquely named **test accounts** and test tasks on the selected development server. It tests authentication, isolation (including cross-account edits), invalid input rejection, edits, CLI capture/completion, and exact CLI/API planning consistency. It does not remove those accounts or modify real users' tasks. Run only against your development instance.
+Each script creates two uniquely named **test accounts** and test tasks on the selected development server. The smoke script tests authentication, isolation (including cross-account edits), invalid input rejection, edits, CLI capture/completion, and exact CLI/API planning consistency. The scripts do not remove those accounts or modify real users' tasks. Run only against your development instance.
 
 The feature script also creates two disposable accounts and checks study deductions, repeat-request handling, account isolation, weekly capacity validation, and exact CLI/API multi-day plan equality.
+
+The lifecycle script checks saved weekday capacity and date rotation, correction/undo/restore accounting and audit history, request replay and stale versions, manual estimate/completion preservation, archives and plan exclusion, and CLI/API parity.
 
 To verify persistence reproducibly:
 
 ```bash
 python3 scripts/smoke_test.py --write-restart-state .jac/restart-check.json
 python3 scripts/feature_test.py --write-restart-state .jac/features-restart.json
+python3 scripts/lifecycle_test.py --write-restart-state .jac/lifecycle-restart.json
 # Stop the server with Ctrl+C, then restart it with jac run.
 python3 scripts/smoke_test.py --verify-restart-state .jac/restart-check.json
 python3 scripts/feature_test.py --verify-restart-state .jac/features-restart.json
+python3 scripts/lifecycle_test.py --verify-restart-state .jac/lifecycle-restart.json
 ```
 
 The state files contain disposable test account tokens and expected task/history snapshots, are owner-readable only, and remain under ignored `.jac/`. Use the same `--server` URL for both commands when overriding the default.

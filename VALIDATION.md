@@ -6,11 +6,73 @@ MaizePlan delivers four Jac components: a persistent planning server, a web fron
 
 | Component | Implemented functionality |
 |---|---|
-| Server | Authenticated task creation/editing, completion/reopening, per-account graph storage, input validation, study sessions with automatic remaining-effort updates, daily/multi-day planning |
-| Web | Account access, task capture/editing, search and filters, summary counts, study history, daily/weekly plans and refresh |
-| Mobile | Jac MobUI Tasks, Add, Focus and Progress screens, shared authentication/API transport, completion/reopening, study records, weekly plans and refresh |
-| CLI | Registration/login, capture, listing/filtering, completion/reopening, study/history, daily/multi-day planning, JSON output and local session management |
+| Server | Authenticated tasks and archives, per-account graph storage, study sessions and immutable revisions, saved weekly capacity, daily/multi-day planning |
+| Web | Task editing, search/filters, archive/restore, study correction/undo/restore/audit, saved capacity, workload chart and refresh |
+| Mobile | Jac MobUI Tasks, Add, Focus and Progress screens, task archives, study corrections/audit, saved capacity and workload chart |
+| CLI | Account/session management, task lifecycle, study/history/corrections, saved capacity, daily/multi-day plans, text workload chart and JSON output |
 | Documentation and tests | Setup and launch instructions, phone runtime options, integration script, restart-state checks and scheduler tests |
+
+## Mobile app verification - 2026-09-25
+
+The project author confirmed successfully reproducing the mobile app workflow. Device model and operating-system version are intentionally omitted. This confirmation supplements the independently recorded React Native Web checks below; it does not claim that every mobile platform, packaging route, or regression scenario was tested.
+
+Recommended reproduction route: **compatible Expo Go**, as documented in README. Run the shared planning server, start the Jac mobile development bundle from a separate source copy, open it in an Expo Go client compatible with the generated SDK, and set MaizePlan's Server URL to the planning server's LAN address and API port. Sign in with the same account as the web and CLI.
+
+## Capacity, study revisions and archives — 2026-09-26
+
+Measured using Jac 0.37.21, an isolated source copy with an existing disposable test database, web/API ports 8120/8121, and the rebuilt React Native Web preview on 8122. Existing project data was not reset. These additions were not independently executed on a native device; the author's earlier confirmation above predates this feature revision.
+
+| Check | Measured result |
+|---|---|
+| Scheduler tests | 12 passed, including archived-work exclusion and per-day overdue/catch-up counts |
+| Compilation and builds | `jac check`: 3 app roots passed with warnings; final `jac build web` and `jac build --platform web mobile` passed |
+| Existing regressions | `scripts/smoke_test.py` and `scripts/feature_test.py` passed against the real API/CLI |
+| New lifecycle integration | `scripts/lifecycle_test.py` passed: saved capacity, date rotation, correction/undo/restore, audit history, archives, validation, account isolation and CLI/API parity |
+| Capacity defaults | Omitted and explicit-null budgets use the saved routine; an explicit empty list remains invalid. Wednesday correctly rotates Monday-first capacity to Wednesday-first |
+| Study accounting | 90-minute task → log 25 → 65 remaining → correct to 10 → 80 → undo → 90 → restore → 80. A 100-minute log credited against 30 restores only 30 when undone |
+| Manual changes and retries | Newer manual remaining estimates and explicit completions were preserved; stale versions and changed payloads sharing a request ID were rejected; identical sequential retries applied once |
+| Archives | Excluded from normal lists and both planners; accessible in archive view and restorable. History retained; corrections on archived tasks kept the archive state |
+| Old data | Pre-existing task and four study records loaded with the added defaults. A pre-existing record was corrected, undone and restored through the UIs |
+| Web/mobile workflow | Web saved Saturday/Sunday capacities of 25/120; mobile and a later web sign-in loaded them. Both UIs mapped those values to the correct weekdays after changing the start date |
+| Cross-interface revisions | Web changed a 15-minute record to 5: remaining 25 → 35, active history 65 → 55. Mobile refresh matched and cleared its old forecast; mobile undo produced 40/50, then restoring 15 returned 25/65 |
+| Cross-interface archives | Web archived the task; its active count fell to zero while history remained. Mobile refresh showed no active tasks; its archive view restored the task, which web refresh counted again |
+| Charts and audit UI | Web and mobile rendered focus/free capacity and late-work labels; the three-change audit showed the original and each adjustment. Desktop and 390-pixel mobile preview layouts were inspected; both browser consoles had no captured errors |
+| Process restart | All three scripts' restart checks passed: task/history snapshots, archived state, saved capacity and revision history survived; replaying a saved correction made no second adjustment |
+
+The retry tests establish sequential replay behavior, including after restart, rather than arbitrary concurrent-client guarantees. Native keyboard/scroll behavior for the new controls still needs device testing. Forecasts remain non-mutating and are cleared when tasks/history reload; capacity edits are persisted only with **Save weekly capacity**.
+
+To reproduce the added API/CLI and restart checks:
+
+```bash
+python3 scripts/lifecycle_test.py --write-restart-state .jac/lifecycle-restart.json
+# Stop and restart the same server.
+python3 scripts/lifecycle_test.py --verify-restart-state .jac/lifecycle-restart.json
+```
+
+The script creates disposable accounts and keeps its token/snapshots in an ignored, owner-readable state file. For a UI demo, save a routine on web, load it in mobile Progress, correct/undo/restore a record, inspect its audit, archive/restore its task, and refresh the other interface after each change.
+
+## Refresh consistency regression
+
+Tasks and study history now reload together on login, after local changes, and through either refresh control. A weekly forecast is displayed only for the task snapshot it was generated from, so a later response for an older snapshot cannot restore it after a refresh. Refreshing preserves the weekly start date and daily budgets in the current Progress screen. Refresh failures remain visible as errors and do not report a successful synchronization.
+
+Measured with Jac 0.37.21, an isolated source copy using the existing Python environment, web/API ports 8120/8121, and the rebuilt React Native Web preview on port 8122. This regression did not repeat native-device execution or a fresh-machine setup.
+
+| Check | Measured result |
+|---|---|
+| Compilation | `jac check`: 3 app roots passed with warnings; `jac build web` and `jac build --platform web mobile` passed |
+| Initial history | Signing in loaded a task with 65 minutes remaining and 25 recorded minutes; Progress displayed history without a separate history request from the user |
+| Changes from CLI | CLI recorded 15 more minutes. Web's top-level Refresh and mobile Progress's Refresh each showed 50 remaining and 40 total recorded minutes |
+| Forecast invalidation | Web's old daily and weekly plans disappeared; mobile Progress's old weekly plan disappeared. Both retained daily budgets beginning with 25 and 120 minutes |
+| Regeneration | Both weekly plans used 50 remaining minutes and reported a 25-minute deadline shortfall, replacing the previous 65-minute plan and 40-minute shortfall |
+| Local study recording | Web recorded 10 more minutes and immediately showed 40 remaining / 50 recorded. Mobile then recorded 15 and showed 25 remaining / 65 recorded. Each cleared its previous forecast |
+| Failed refresh | After stopping the test server, web and mobile refresh displayed a fetch error and cleared the preceding refresh-success message |
+
+To repeat the refresh regression:
+
+1. Create a task due today with 90 minutes remaining and record 25 minutes. Sign into web and mobile with the same account.
+2. Generate weekly plans with 25 minutes today and 120 tomorrow; also generate a daily plan on the web.
+3. Record 15 minutes through the CLI, then use web **Refresh all devices’ changes** and mobile Progress **Refresh tasks & study history**.
+4. Verify 50 remaining minutes, 40 total recorded minutes, cleared forecasts, and preserved capacities. Regenerate the weekly plans and verify a 25-minute deadline shortfall.
 
 ## Feature validation — 2026-09-25
 
@@ -28,7 +90,7 @@ Current compiler: **Jac 0.37.21**, pinned in `jac.toml`. Generic type annotation
 | Cross-interface progress | After restarting and signing back in, the web showed the mobile-updated 50 minutes remaining and shared history totaling 40 minutes |
 | Backend process restart | Passed: exact task and study-history snapshots survived a graceful stop/restart; replaying the saved request returned its existing record without another deduction |
 
-Retry tests cover sequential retries and retries after restart; they do not establish concurrent multi-client transaction guarantees. Mobile interaction coverage remains the browser-rendered mobile source.
+Retry tests cover sequential retries and retries after restart; they do not establish concurrent multi-client transaction guarantees. The mobile interaction measurements in this table cover the browser-rendered mobile source; the author's mobile-app confirmation is recorded separately above.
 
 To reproduce the new integration and persistence checks against the local development server:
 
@@ -100,7 +162,7 @@ The server process was stopped and restarted; this was not simply a browser refr
 
 ## Test coverage
 
-Mobile interaction results refer to the compiled **React Native Web** version of the Jac mobile source, served on port 8010 against the original API on 8001. Physical iOS/Android devices and simulators were not exercised. Phone instructions document the runtime workflow; they are not additional test pass results.
+The automated and agent-observed mobile interaction results refer to the compiled **React Native Web** version of the Jac mobile source. The original run used port 8010 against the API on 8001. The project author has additionally confirmed successful reproduction in the mobile app, as recorded above. Native-device execution was not independently repeated by the agent, and no claim is made that both iOS and Android or all simulator configurations were tested.
 
 Signed APK/IPA distribution, EAS cloud builds and store publication are separate packaging options, not artifacts included with this source delivery. GitHub/Canvas submission is outside these runtime test results.
 

@@ -18,7 +18,7 @@ def _make_plan(tasks: list[dict[str, any]], day: str, budget: int) -> dict[str, 
     if budget < 5 or budget > 720 {
         raise ValueError("Available time must be between 5 and 720 minutes.");
     }
-    pending = [t for t in tasks if not t["done"]];
+    pending = [t for t in tasks if not t["done"] and not t.get("archived", False)];
     pending.sort(key=_task_order);
     blocks: list[dict[str, any]] = [];
     elapsed = 0;
@@ -64,7 +64,7 @@ def _make_week(tasks: list[dict[str, any]], start: str, budgets: list[int]) -> d
             raise ValueError("Each daily budget must be 0 (day off) or 5–720 minutes.");
         }
     }
-    original = [dict(t) for t in tasks if not t["done"]];
+    original = [dict(t) for t in tasks if not t["done"] and not t.get("archived", False)];
     remaining = [dict(t) for t in original];
     days: list[dict[str, any]] = [];
     on_time: dict[str, any] = {};
@@ -81,6 +81,8 @@ def _make_week(tasks: list[dict[str, any]], start: str, budgets: list[int]) -> d
             }
         }
         p["remaining"] = sum(t["minutes"] for t in remaining);
+        p["urgent_unplanned"] = sum(t["minutes"] for t in remaining if t["due"] <= day);
+        p["late"] = sum(b["minutes"] for b in p["blocks"] if b["overdue"]);
         days.append(p);
     }
     end = days[-1]["day"];
