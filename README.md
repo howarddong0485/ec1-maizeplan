@@ -1,27 +1,75 @@
 # MaizePlan
 
+**Make room for what matters — a coursework planner that turns available time into an actionable study plan.**
+
 **Student:** Gehao Dong / dgehao  
 **UMID:** 62168169  
 **Course:** EECS 449 / CSE449-F26 — Assignment 1  
-**Delivery:** Jac server, web frontend, mobile client, CLI, automated tests, and setup documentation. See [VALIDATION.md](VALIDATION.md) for measured results and test coverage.
+**Built with:** Jac 0.37.21 · persistent Jac server · web frontend · MobUI / React Native mobile app · Jac CLI
 
-MaizePlan is a personal coursework planner written in Jac. It turns assignment deadlines and estimated effort into a realistic, time-budgeted study plan. The web, native mobile, and terminal interfaces all use the same authenticated Jac server and persistent task graph.
+Students need to know what they can finish with the time they actually have. MaizePlan combines assignment deadlines, remaining effort, and a personal weekly routine to suggest focused study blocks and expose work that will miss its deadline. Recording actual study changes the next plan; correcting a mistake preserves the history behind that change.
 
-## Features
+**The workflow: capture → plan → study → correct → replan.** Web, phone, and terminal all use the same authenticated server, planning rules, and persistent data. The application runs without an LLM key, paid API, or external calendar account.
 
-- Add tasks with a course, deadline, priority, and estimated remaining minutes.
-- Edit tasks on the web; mark complete or reopen from web, mobile, or CLI.
-- Archive/restore tasks on every interface; web search, open/completed/archived filters, and overdue/completion counts.
-- A transparent focus planner: earliest deadline first, priority as a tie-breaker, up to 25 minutes of work followed by a 5-minute break.
-- The time budget **includes breaks**. Large tasks can receive partial blocks. Due/overdue work that cannot fit is explicitly reported.
-- Record actual study sessions, automatically reduce remaining effort, and complete tasks when the remainder reaches zero. History is shared across interfaces.
-- Correct, undo, or restore study records with an immutable audit trail and corresponding remaining-effort adjustments.
-- Save a personal Monday–Sunday capacity shared across devices. Plan seven days with days off, a focus/break/free-capacity chart, and deadline warnings that distinguish late catch-up from on-time work.
-- Native mobile screens use Jac MobUI / React Native, not an HTML webview.
-- Account-isolated graph persistence; anonymous access to planning endpoints is not allowed.
-- No LLM key, paid API, or external calendar required.
+[Run the project](#start-the-web-app-and-server) · [Review walkthrough](#review-walkthrough) · [Mobile instructions](#mobile-app) · [CLI instructions](#cli) · [Validation evidence](VALIDATION.md)
 
-The planner is a suggestion rather than a calendar booking. Changing the planning day changes overdue reporting, not which tasks are eligible: all open tasks may be scheduled. Study time is entered manually rather than measured by a timer. Recording it reduces the current remaining estimate; generating a plan never changes tasks. Notifications, offline operation, and calendar bookings are not implemented.
+## What makes MaizePlan stand out
+
+| Design choice | Implemented behavior | Why it matters |
+|---|---|---|
+| **Planning that respects deadlines and available time** | Earliest deadline first, priority as a tie-breaker, up to 25-minute focus blocks, and 5-minute breaks included in the budget. Large tasks can be split across days. | Produces a concrete next action that fits the available time. Later catch-up capacity does not hide an earlier deadline shortfall. |
+| **A weekly routine you can see** | Save Monday–Sunday capacity once; reuse it across interfaces and rotate it to any starting weekday. The workload chart shows focus, breaks, free time, days off, and late work. | Makes a busy week understandable and lets the user compare different capacities before committing effort. Forecasts leave stored tasks unchanged. |
+| **Study progress feeds the next plan** | Actual study reduces remaining effort and completes a task at zero. Actual minutes and credited minutes are stored separately. | A 100-minute study record against 30 remaining keeps the full 100-minute history while deducting only 30. Estimates never become negative. |
+| **Mistakes are recoverable** | Correct, undo, and restore study records with an immutable revision trail. Preserve newer manual estimates and explicit manual completions. Archive and restore tasks without losing their history. | Supports continued use as plans change, with an explanation of how each correction affected the remaining work. |
+| **Meaningful workflows on every interface** | Organize and edit on web, record study on mobile, and capture or revise from the CLI. All three clients call the same Jac backend. | A change made on one interface is available to the others after refresh; tasks, history, archives, and weekly capacity stay in one account. |
+| **Reliability that can be inspected** | Account isolation, request IDs for repeat submissions, stale-revision rejection, forecast invalidation after refresh, and process-restart checks. | The accompanying tests verify accounting and shared state against a running server, including sequential retries after restart. |
+
+The web also includes task search, open/completed/archived views, summary counts, and full task editing. The mobile app uses MobUI / React Native controls. The CLI provides readable output, an ASCII workload chart, and `--json` for inspection or scripts.
+
+## Four Jac components, one planning model
+
+| Component | Main source | Role in the workflow |
+|---|---|---|
+| **Server** | [core/api.jac](core/api.jac), [core/planning.jac](core/planning.jac) | Owns authentication-scoped task storage, study records and revisions, weekly capacity, and all scheduling/accounting rules. |
+| **Web** | [web/Planner.jac](web/Planner.jac), [web/Progress.jac](web/Progress.jac) | Organize coursework, edit estimates, compare plans, inspect workload and revision history. |
+| **Mobile** | [mobile/Phone.jac](mobile/Phone.jac), [mobile/Progress.jac](mobile/Progress.jac) | Capture tasks, complete or archive them, record/correct study, and consult the weekly plan using native controls. |
+| **CLI** | [cli/main.jac](cli/main.jac) | Capture and inspect tasks, log/correct study, save capacity, generate plans, and output JSON from a terminal. |
+
+`web/main.jac` registers the protected planning endpoints. Web and mobile share [core/client.jac](core/client.jac) for authentication and HTTP transport; the Jac CLI uses Python's standard HTTP library. Persistent `Task`, `StudySession`, `StudyChange`, and `WeeklyCapacity` nodes belong to the authenticated user's graph root. Clients display server results and refresh shared data explicitly.
+
+The [workspace configuration](jac.toml) selects `web` as the default app. After the prerequisites and dependencies are installed, **`jac run` from the repository root starts the web application and its server together**. Mobile and CLI launch commands are documented below.
+
+## Review walkthrough
+
+After setup, use a fresh MaizePlan account and the same planning server in each interface. Keep the study date and forecast start on **today** for the numbers below; the account should contain only the example task.
+
+| Step | Action | What to observe |
+|---|---|---|
+| 1. Capture the work | On web, add **Finish EECS 449 report**, due today, with **90 minutes** remaining. | The task appears with its course, deadline, priority, and remaining effort. |
+| 2. Make the constraint visible | Set today's capacity to **25**, tomorrow's to **120**, and the other five days to **0**. Save weekly capacity and generate the plan. | All 90 focus minutes can fit across the horizon, but **65 minutes cannot fit by today's deadline**. Tomorrow's blocks are labeled late/catch-up. Planning has not reduced the task's 90-minute estimate. |
+| 3. Study on another interface | Sign into mobile with the same account. Open Progress, load the saved capacity, and record **25 minutes** against the task. Refresh web and regenerate its plan. | Both show **65 minutes remaining** and **25 recorded**. The deadline shortfall is now **40 minutes**. Refresh removes the old forecast before regeneration. |
+| 4. Correct from the terminal | Run `jac run cli login YOUR_USERNAME`, then `jac run cli history`. Copy the study record ID and run `jac run cli correct FULL_STUDY_RECORD_ID --minutes 10`. Refresh web. | Remaining effort becomes **80**, active history becomes **10**, and the audit retains the original 25-minute record. |
+| 5. Recover an accidental entry | On web, undo that record, then restore it with **25 minutes**. Inspect its audit trail. | Undo returns remaining effort to **90**; restoring 25 returns it to **65**. The original and all three revisions remain inspectable. |
+| 6. Keep the workspace useful | Archive the task on web. Run `jac run cli list --all` and `jac run cli list --archived`. Refresh mobile Tasks and restore it from the archive. | The archive disappears from active plans and lists while its study history remains. Restoring it keeps its remaining effort and completion state. |
+
+This walkthrough exercises all four components through one planning scenario. [The automated checks](#tests-and-demonstration) also cover account isolation, invalid input, repeat requests, manual re-estimation, and server restarts.
+
+## Verification at a glance
+
+The latest recorded validation on **2026-09-26 with Jac 0.37.21** includes:
+
+- **12 scheduler unit tests passed**, including break budgets, partial allocations, deadline shortfalls, days off, and archive exclusion.
+- **All 3 app roots passed `jac check` with warnings**; web and React Native Web builds succeeded.
+- **Three real API/CLI integration scripts passed**, along with their process-restart checks for tasks, history, saved capacity, archives, and correction retries.
+- **Web and mobile browser-preview workflows were exercised together**, including shared capacity, correction/undo/restore, archive/restore, refresh consistency, and chart layout at phone width.
+
+The author has separately confirmed mobile-app reproduction. The latest added controls were validated in React Native Web and have not yet been independently retested on a native device. [VALIDATION.md](VALIDATION.md) records the exact scenarios and separates this evidence from earlier native-app confirmation. Current-version testing used an isolated source copy; the earlier clean source-copy setup check is documented there with its compiler version.
+
+## Scope and design boundaries
+
+MaizePlan generates deterministic suggestions; it does not book calendar events or measure time with a timer. All open, unarchived tasks are eligible for scheduling. Daily budgets include breaks; weekly deadline warnings cover deadlines through the selected horizon. Study records update the current estimate, including when backdated, rather than reconstructing historical plans.
+
+Cross-device synchronization uses explicit refresh. Notifications, offline operation, external calendar integration, signed mobile binaries, and store distribution are outside the delivered scope. Sequential retry and restart behavior has been tested; arbitrary concurrent-client guarantees are not claimed.
 
 ## Prerequisites
 
@@ -263,24 +311,6 @@ jac build --platform ios mobile
 
 See `jac guide jac-mobile-app` for platform prerequisites and the `android_builder` / `ios_builder` settings for EAS. Cloud builds require Expo account/project configuration and appropriate signing credentials. Expo Go development does not invoke the standalone iOS packaging step.
 
-## How the four components fit together
-
-| Component | Source | Responsibility |
-|---|---|---|
-| Jac server | `core/api.jac`, `core/planning.jac` | Persist per-account tasks, archives, study revisions and weekly capacity; generate daily/multi-day plans |
-| Web | `web/` | Task editing/filtering, archive/restore, study corrections/audit, saved capacity and workload chart |
-| Native mobile | `mobile/` | Capture, complete/reopen, archive/restore, study corrections/audit, saved capacity and workload chart; MobUI controls |
-| CLI | `cli/main.jac` | Task lifecycle, study/history/corrections, saved capacity, daily/multi-day planning, text chart and JSON output |
-| Shared client transport | `core/client.jac` | Web/mobile login and HTTP requests to the explicitly selected backend |
-
-`web/main.jac` imports each planning endpoint so Jac registers it at `/function/<name>`. The clients POST parameter JSON and read Jac's `data.result` envelope. Web/mobile share transport code; CLI uses Python's standard HTTP library **from Jac**. All planning logic lives on the server—there are no independent browser/phone/CLI task stores to drift apart.
-
-The API declarations use `:protect`: project-visible, but still authenticated. Under this Jac version, only `:pub` skips authentication. Task updates search only the caller's own root rather than trusting a client-supplied task ID.
-
-## Why this project stands out
-
-The scheduler accounts for recovery breaks, partially schedules large assignments, and makes deadline shortfalls visible. Actual study reduces the next plan; corrections and undo make that record maintainable. Saved weekday capacity and the workload chart connect the plan to a personal routine. Archives keep the active workspace useful without discarding history. These rules and data are shared across web, phone, and terminal, with reproducible tests for accounting, persistence, and synchronization.
-
 ## Tests and demonstration
 
 ```bash
@@ -318,19 +348,9 @@ python3 scripts/lifecycle_test.py --verify-restart-state .jac/lifecycle-restart.
 
 The state files contain disposable test account tokens and expected task/history snapshots, are owner-readable only, and remain under ignored `.jac/`. Use the same `--server` URL for both commands when overriding the default.
 
-The following demonstration covers the shared planning workflow. Use the mobile setup above when demonstrating it on a phone:
+Use the [review walkthrough](#review-walkthrough) for the main cross-interface demonstration. Additional manual checks include editing and completing/reopening tasks, signing into a second account to confirm isolation, and disconnecting the backend to observe errors before reconnecting. On a native phone, also check keyboard behavior, scrolling, and backend reachability for the latest controls.
 
-1. On the web, register and add one real test task. Edit its estimate and deadline.
-2. Sign into the same server on the mobile app; Refresh and confirm the edit appears.
-3. Complete it on the phone. Refresh the web; it must appear under Done.
-4. Reopen it via CLI. Refresh both UIs and confirm it is open.
-5. Generate the same date/budget plan in each interface; results must agree.
-6. Stop and restart the original server with `jac run`, sign in again, and verify the task and completion state remain.
-7. Sign in as another account; it must not see or modify the first account's task.
-8. Disconnect the backend: each interface should report an error, not fake success. Reconnect and retry.
-9. Run on an actual iOS/Android device or simulator; check keyboard behavior, scrolling, and backend reachability.
-
-Recorded results include source-only-copy installation, UI/API/CLI integration, and process-restart persistence. [VALIDATION.md](VALIDATION.md) distinguishes measured coverage from additional demonstration scenarios.
+[VALIDATION.md](VALIDATION.md) distinguishes recorded results from additional demonstration scenarios and documents the setup and compiler version used for each check.
 
 ## Submission
 
