@@ -7,11 +7,20 @@
 **Course:** EECS 449 / CSE449-F26 — Assignment 1  
 **Built with:** Jac 0.37.21 · persistent Jac server · web frontend · MobUI / React Native mobile app · Jac CLI
 
-Students need to know what they can finish with the time they actually have. MaizePlan combines assignment deadlines, remaining effort, and a personal weekly routine to suggest focused study blocks and expose work that will miss its deadline. Recording actual study changes the next plan; correcting a mistake preserves the history behind that change.
+MaizePlan is a personal coursework planner for students. Add assignments with a course, deadline, priority, and estimated remaining minutes, then enter how much time you have available. MaizePlan suggests focused study blocks and shows work that cannot fit before its deadline. Recording actual study changes the next plan; correcting a mistake preserves the history behind that change.
 
 **The workflow: capture → plan → study → correct → replan.** Web, phone, and terminal all use the same authenticated server, planning rules, and persistent data. The application runs without an LLM key, paid API, or external calendar account.
 
 [Run the project](#start-the-web-app-and-server) · [Review walkthrough](#review-walkthrough) · [Mobile instructions](#mobile-app) · [CLI instructions](#cli) · [Validation evidence](VALIDATION.md)
+
+## First time using MaizePlan?
+
+1. Complete the [prerequisites](#prerequisites) and [setup steps](#start-the-web-app-and-server). On Apple Silicon macOS, follow the documented Python environment step before installing project dependencies.
+2. From the repository root, run `jac install`, then `jac run`. Open the printed web URL, normally `http://localhost:8000`, and create a MaizePlan account.
+3. Add an assignment, enter your available minutes, and choose **Make my plan**. Use **Record your study** after working, or **Seven-day workload plan** to plan a week.
+4. Keep the server running. Follow the separate [mobile](#mobile-app) or [CLI](#cli) instructions and sign into the same MaizePlan account. Use **Refresh** after changing data on another interface.
+
+The web app and server run together on your computer. A physical phone runs the mobile client and connects to that computer's API; its setup requires the separate mobile instructions below. The [review walkthrough](#review-walkthrough) provides a worked example after setup.
 
 ## What makes MaizePlan stand out
 
@@ -63,7 +72,7 @@ The latest recorded validation on **2026-09-26 with Jac 0.37.21** includes:
 - **Three real API/CLI integration scripts passed**, along with their process-restart checks for tasks, history, saved capacity, archives, and correction retries.
 - **Web and mobile browser-preview workflows were exercised together**, including shared capacity, correction/undo/restore, archive/restore, refresh consistency, and chart layout at phone width.
 
-The author has separately confirmed mobile-app reproduction. The latest added controls were validated in React Native Web and have not yet been independently retested on a native device. [VALIDATION.md](VALIDATION.md) records the exact scenarios and separates this evidence from earlier native-app confirmation. Current-version testing used an isolated source copy; the earlier clean source-copy setup check is documented there with its compiler version.
+**Mobile-app verification is complete.** The current application revision (`4903800`) also passed installation and default startup from a fresh GitHub checkout with a new project environment and database. The six-step review walkthrough and all three integration scripts' restart checks passed. Expo/Metro served both Android and iOS JavaScript bundles after the mobile startup adjustment documented below. [VALIDATION.md](VALIDATION.md) records the tested revision, commands, results, and scope of each check.
 
 ## Scope and design boundaries
 
@@ -110,7 +119,7 @@ jac install
 jac run
 ```
 
-Open the URL printed by Jac (normally `http://127.0.0.1:8000`). The default app is `web`; one command starts its frontend (8000) and backend API (8001). Web requests use the frontend proxy; CLI and mobile default to API port 8001. If ports differ, use the API URL printed by Jac. Create an account with a unique username and a password of at least 8 characters, then add a task. An email address is not needed. Use the same username/password on the other interfaces.
+Open the URL printed by Jac (normally `http://localhost:8000`). The default app is `web`; one command starts its frontend (8000) and backend API (8001). Web requests use the frontend proxy; CLI and mobile default to API port 8001. If ports differ, use the API URL printed by Jac. Create an account with a unique username and a password of at least 8 characters, then add a task. An email address is not needed. Use the same username/password on the other interfaces.
 
 The server binds to loopback by default. Task data belongs to the server's persistent graph, not browser local storage. Tokens stay in web/mobile memory only: refreshing the page or restarting the mobile app requires signing in again, but must not erase tasks. Click **Refresh** after another device changes data; synchronization is manual, not real-time push.
 
@@ -206,7 +215,7 @@ Local versus cloud describes **where compilation happens**, not a different mobi
 
 The detailed phone workflow below uses Expo Go. Custom development builds and EAS distribution are alternatives requiring their own configuration; this repository does not include a published cloud build or signed binary. See Expo's [development-build overview](https://docs.expo.dev/develop/development-builds/introduction/), [cloud build setup](https://docs.expo.dev/build/setup/), and [local build overview](https://docs.expo.dev/guides/local-app-overview/).
 
-You may use VS Code for every route. Local iOS compilation/simulators require Apple's Xcode toolchain. The author has confirmed mobile-app reproduction; the independently measured mobile coverage includes the React Native Web build and UI/backend workflow. See [VALIDATION.md](VALIDATION.md) for the distinction.
+You may use VS Code for every route. Local iOS compilation/simulators require Apple's Xcode toolchain. Mobile-app verification is complete; additional checks cover Expo/Metro bundles and React Native Web UI/backend workflows. See [VALIDATION.md](VALIDATION.md) for the recorded results.
 
 ### 1. Prepare a compatible phone client
 
@@ -245,11 +254,24 @@ cp -R core web mobile cli "$PHONE_WORKSPACE/"
 cd "$PHONE_WORKSPACE"
 jac setup mobile
 
+# Jac 0.37.21 workaround: keep its helper process in API-only mode.
+# Apply only in this temporary phone workspace, after jac setup mobile.
+python3 - <<'PY'
+from pathlib import Path
+config = Path("jac.toml")
+source = config.read_text()
+section = '[apps.mobile]\nkind = "mobile"\n'
+assert source.count(section) == 1
+config.write_text(source.replace(section, section + 'platform = "web"\n'))
+PY
+
 # Replace this example with your computer's LAN IP.
-JAC_RN_DEV_HOST=192.168.1.42 jac run --dev --port 8002 --api-port 8002 mobile
+JAC_RN_DEV_HOST=192.168.1.42 jac run --dev --platform android --port 8002 --api-port 8002 mobile
 ```
 
-`jac setup mobile` downloads the Expo dependencies. The dev command compiles the Jac mobile client and starts Expo/Metro; it does not request `jac build --platform ios`. Keep terminal B open. Metro normally uses **8081**; use the actual address/QR code printed in the terminal. If the Expo terminal is targeting a development build, use its displayed option to switch to Expo Go.
+`jac setup mobile` downloads the Expo dependencies. The configuration adjustment avoids a reproduced Jac 0.37.21 issue where its helper process unexpectedly starts an Android native build. Keep both the temporary `platform = "web"` setting and the explicit `--platform android` argument: together they start the native development bundle and an API-only helper. This command serves Expo/Metro for compatible **Android or iOS** clients; both JavaScript bundles were checked. It does not build an APK or IPA.
+
+Keep terminal B open. Metro normally uses **8081**; use the actual address/QR code printed in the terminal. If the Expo terminal is targeting a development build, use its displayed option to switch to Expo Go.
 
 This temporary workspace is only for serving mobile code. The phone must use the **original planning API on 8001**, not the helper API on 8002, even if Jac prints 8002 as its dev API. MaizePlan's explicit **Server URL** field controls its task requests. Source edits in the original directory do not update this copy; recreate the copy when you want to try changed source. On Windows, use a separate source-only copy/checkout and set `JAC_RN_DEV_HOST` using your shell's environment-variable syntax.
 
@@ -282,6 +304,7 @@ For a cross-device demo, add a task on the web, refresh Tasks on the phone, comp
 | QR opens no app / bundle cannot load | Check the compatible client, terminal B, actual Metro address/port, same Wi-Fi, local-network permission, and firewall access. Campus/guest Wi-Fi may block device-to-device traffic. |
 | App opens but login/tasks fail | Check terminal A, the explicit Server URL, and port 8001. A working Metro bundle does not establish API reachability. |
 | Phone shows different/empty tasks | Use the original server and same MaizePlan account, then Refresh. Do not connect to the mobile helper API on 8002. |
+| Mobile dev unexpectedly downloads Android build tools or asks for SDK licenses | Stop terminal B. Apply the temporary-workspace configuration adjustment in step 3 and retain `--platform android` in the dev command. The Expo route does not need a standalone native build. |
 | Ports/database already in use | Stop the previous process you launched, and keep mobile dev in the separate source copy. Do not delete `.jac/data` or take over the original server session. |
 | Native-module or generated-code error | Record the exact message and SDK/client versions. Check that the chosen client includes the required native modules; use the selected build route’s diagnostics. |
 

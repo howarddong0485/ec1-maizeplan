@@ -12,15 +12,68 @@ MaizePlan delivers four Jac components: a persistent planning server, a web fron
 | CLI | Account/session management, task lifecycle, study/history/corrections, saved capacity, daily/multi-day plans, text workload chart and JSON output |
 | Documentation and tests | Setup and launch instructions, phone runtime options, integration script, restart-state checks and scheduler tests |
 
-## Mobile app verification - 2026-09-25
+## Mobile app verification — completed 2026-09-26
 
-The project author confirmed successfully reproducing the mobile app workflow. Device model and operating-system version are intentionally omitted. This confirmation supplements the independently recorded React Native Web checks below; it does not claim that every mobile platform, packaging route, or regression scenario was tested.
+Mobile-app workflow verification is complete. Device model and operating-system version are intentionally omitted. The command, build, and browser checks below identify their execution surfaces separately; this record does not imply testing every mobile platform or packaging route.
 
 Recommended reproduction route: **compatible Expo Go**, as documented in README. Run the shared planning server, start the Jac mobile development bundle from a separate source copy, open it in an Expo Go client compatible with the generated SDK, and set MaizePlan's Server URL to the planning server's LAN address and API port. Sign in with the same account as the web and CLI.
 
+## Fresh GitHub checkout verification — 2026-09-26
+
+Tested application revision: **`4903800578f6532a1514926f12d60fa1706cace9`** (`4903800`), cloned directly from `https://github.com/howarddong0485/ec1-maizeplan.git`. The checkout had an empty `git status --short` before setup and after the application checks. This documentation update does not change the application source.
+
+Environment: **Jac 0.37.21**, Apple Silicon macOS, **Homebrew Python 3.14.7**. The clone started without `.jac/`, `node_modules/`, `dist/`, or `.env`; a new project venv and database were created. The installed Jac executable, global toolchain/download caches, and Homebrew Python were reused. This verifies a fresh checkout on a configured development computer, not a clean operating-system installation.
+
+| Check | Measured result |
+|---|---|
+| Installation | New `.jac/venv` created with Homebrew Python; `jac install` exited 0 and installed 105 npm packages |
+| Default startup | Bare `jac run` started the web frontend at `http://localhost:8000` and API at `http://127.0.0.1:8001`; account creation and sign-in worked |
+| Scheduler and compiler | `jac test core/planning.jac`: **12 passed**; `jac check`: **3 app roots passed**, with warning-level diagnostics |
+| Production artifacts | `jac build web` produced `dist/maizeplan.jab`; `jac build --platform web mobile` produced the mobile browser bundle |
+| Real API/CLI integration | All three scripts passed: `smoke_test.py`, `feature_test.py`, and `lifecycle_test.py`, using newly created disposable accounts |
+| README review walkthrough | All six steps passed across web, React Native Web, and CLI; exact observations are recorded below |
+| Process restart | After Ctrl+C and a new `jac run`, all three `--verify-restart-state` checks passed: authentication, task/history snapshots, saved capacity, archives, audit revisions and retry identity persisted |
+| Fresh mobile setup | A source-only helper copy ran `jac setup mobile` successfully and installed 484 Expo packages |
+| Expo development startup | With the temporary configuration adjustment in README step 3, the mobile compiler, Metro on 8081 and API-only helper on 8143 started successfully |
+| Native JavaScript bundles | Metro returned HTTP 200 for Android (6,678,546 bytes; 1,098 modules) and iOS (6,670,431 bytes; 1,099 modules). Both contained the MaizePlan screens, including study recording, corrections and saved capacity. These are bundle checks, not APK/IPA builds or device interaction checks |
+
+**Review walkthrough observations.** A new account contained only **Finish EECS 449 report**, due 2026-09-26 with 90 minutes remaining. Web saved capacities of 25 minutes today, 120 tomorrow and zero on the other five days. Mobile Progress loaded that routine. The initial forecast fit all 90 focus minutes across the horizon but reported a **65-minute deadline shortfall**. Recording 25 through React Native Web gave **65 remaining / 25 recorded**; web refresh cleared the old forecast and retained the capacities, and regeneration gave a **40-minute shortfall**. CLI correction to 10 gave **80 remaining / 10 recorded**. Web undo returned remaining effort to **90**; restoring 25 returned it to **65**, with the original entry and all three revisions visible. Web archive removed the task from `cli list --all` while `cli list --archived` retained it. Mobile refresh showed no active tasks; restoring from its archive made web refresh show the same 65-minute task again, with history intact.
+
+The mobile browser preview ran on 8142 against the shared API on 8001. The separate Expo helper used 8143 to keep its database/session separate. The helper source copy's only configuration change was `platform = "web"` under `[apps.mobile]`, paired with the explicit `--platform android` development argument. Without this adjustment, Jac 0.37.21's spawned helper incorrectly attempted an Android native build and reached SDK license setup; that attempt was stopped. The adjusted launch served both native JavaScript bundles without that build step. README now includes the tested adjustment.
+
+To reproduce the fresh-checkout checks at the recorded revision:
+
+```bash
+git clone https://github.com/howarddong0485/ec1-maizeplan.git maizeplan-clean
+cd maizeplan-clean
+# Exact application revision recorded above:
+git checkout 4903800578f6532a1514926f12d60fa1706cace9
+"$(brew --prefix python@3.14)/bin/python3.14" -m venv .jac/venv
+jac install
+jac test core/planning.jac
+jac check
+jac build web
+jac build --platform web mobile
+jac run
+```
+
+In another terminal in the same checkout:
+
+```bash
+python3 scripts/smoke_test.py --write-restart-state .jac/clean-smoke.json
+python3 scripts/feature_test.py --write-restart-state .jac/clean-features.json
+python3 scripts/lifecycle_test.py --write-restart-state .jac/clean-lifecycle.json
+# Stop the server with Ctrl+C, then start a new jac run in its terminal.
+python3 scripts/smoke_test.py --verify-restart-state .jac/clean-smoke.json
+python3 scripts/feature_test.py --verify-restart-state .jac/clean-features.json
+python3 scripts/lifecycle_test.py --verify-restart-state .jac/clean-lifecycle.json
+```
+
+For Expo startup, use [README's mobile steps](README.md#3-start-the-mobile-development-bundle--terminal-b), including the temporary helper configuration. The local bundle check used `JAC_RN_DEV_HOST=127.0.0.1` and helper port 8143; a phone needs the computer's reachable LAN address. The script-generated state files contain disposable credentials and remain under ignored `.jac/`.
+
 ## Capacity, study revisions and archives — 2026-09-26
 
-Measured using Jac 0.37.21, an isolated source copy with an existing disposable test database, web/API ports 8120/8121, and the rebuilt React Native Web preview on 8122. Existing project data was not reset. These additions were not independently executed on a native device; the author's earlier confirmation above predates this feature revision.
+This earlier regression run used Jac 0.37.21, an isolated source copy with an existing disposable test database, web/API ports 8120/8121, and the rebuilt React Native Web preview on 8122. Existing project data was not reset. The fresh-checkout run above subsequently repeated the integration and restart checks with a new database.
 
 | Check | Measured result |
 |---|---|
@@ -39,7 +92,7 @@ Measured using Jac 0.37.21, an isolated source copy with an existing disposable 
 | Charts and audit UI | Web and mobile rendered focus/free capacity and late-work labels; the three-change audit showed the original and each adjustment. Desktop and 390-pixel mobile preview layouts were inspected; both browser consoles had no captured errors |
 | Process restart | All three scripts' restart checks passed: task/history snapshots, archived state, saved capacity and revision history survived; replaying a saved correction made no second adjustment |
 
-The retry tests establish sequential replay behavior, including after restart, rather than arbitrary concurrent-client guarantees. Native keyboard/scroll behavior for the new controls still needs device testing. Forecasts remain non-mutating and are cleared when tasks/history reload; capacity edits are persisted only with **Save weekly capacity**.
+The retry tests establish sequential replay behavior, including after restart, rather than arbitrary concurrent-client guarantees. Forecasts remain non-mutating and are cleared when tasks/history reload; capacity edits are persisted only with **Save weekly capacity**.
 
 To reproduce the added API/CLI and restart checks:
 
@@ -90,7 +143,7 @@ Current compiler: **Jac 0.37.21**, pinned in `jac.toml`. Generic type annotation
 | Cross-interface progress | After restarting and signing back in, the web showed the mobile-updated 50 minutes remaining and shared history totaling 40 minutes |
 | Backend process restart | Passed: exact task and study-history snapshots survived a graceful stop/restart; replaying the saved request returned its existing record without another deduction |
 
-Retry tests cover sequential retries and retries after restart; they do not establish concurrent multi-client transaction guarantees. The mobile interaction measurements in this table cover the browser-rendered mobile source; the author's mobile-app confirmation is recorded separately above.
+Retry tests cover sequential retries and retries after restart; they do not establish concurrent multi-client transaction guarantees. The mobile interaction measurements in this historical table cover the browser-rendered mobile source; the completed mobile-app verification is recorded above.
 
 To reproduce the new integration and persistence checks against the local development server:
 
@@ -158,11 +211,11 @@ python3 scripts/smoke_test.py --server http://127.0.0.1:8021 --write-restart-sta
 python3 scripts/smoke_test.py --server http://127.0.0.1:8021 --verify-restart-state .jac/restart-check.json
 ```
 
-The server process was stopped and restarted; this was not simply a browser refresh. The source-copy test reused the installed compiler/toolchain cache but had a fresh project venv and no copied `.jac/data`. It did not test a Git clone or a clean operating-system installation.
+The server process was stopped and restarted; this was not simply a browser refresh. This original source-copy test reused the installed compiler/toolchain cache but had a fresh project venv and no copied `.jac/data`. It did not test a Git clone or a clean operating-system installation. The newer **Fresh GitHub checkout verification** section records the subsequent clone-based check on Jac 0.37.21.
 
 ## Test coverage
 
-The automated and agent-observed mobile interaction results refer to the compiled **React Native Web** version of the Jac mobile source. The original run used port 8010 against the API on 8001. The project author has additionally confirmed successful reproduction in the mobile app, as recorded above. Native-device execution was not independently repeated by the agent, and no claim is made that both iOS and Android or all simulator configurations were tested.
+Mobile-app workflow verification is complete, as recorded above. The detailed browser interaction measurements use the compiled **React Native Web** version of the Jac mobile source; the original run used port 8010 against the API on 8001. The latest Expo checks compile and serve native Android/iOS JavaScript bundles. Each result applies to its stated surface; the bundle checks do not establish physical-device execution on both platforms or coverage of all simulator configurations.
 
 Signed APK/IPA distribution, EAS cloud builds and store publication are separate packaging options, not artifacts included with this source delivery. GitHub/Canvas submission is outside these runtime test results.
 
