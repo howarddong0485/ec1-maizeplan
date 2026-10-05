@@ -18,9 +18,27 @@ Mobile-app workflow verification is complete. Device model and operating-system 
 
 Recommended reproduction route: **compatible Expo Go**, as documented in README. Run the shared planning server, start the Jac mobile development bundle from a separate source copy, open it in an Expo Go client compatible with the generated SDK, and set MaizePlan's Server URL to the planning server's LAN address and API port. Sign in with the same account as the web and CLI.
 
+## One-click sample and short demo — 2026-10-05
+
+Added `load_sample` on the authenticated backend, **Load sample week** on web/mobile, and `jac run cli sample`. The web includes an expandable three-minute walkthrough with links to study recording and weekly planning; README includes the timed steps and an actual UI screenshot.
+
+This run used Jac 0.37.21 and an isolated source copy with a separate database on web/API ports 8150/8151; the React Native Web preview used 8152. It reused the existing Python environment. These checks cover the sample extension; the earlier clean GitHub checkout and native bundle results below remain dated baseline evidence.
+
+| Check | Measured result |
+|---|---|
+| Compiler and scheduler | All 3 app roots passed `jac check` with warnings; 12 scheduler tests passed |
+| Builds | `jac build web` and `jac build --platform web mobile` passed |
+| Sample API/CLI | `scripts/sample_test.py` passed: CLI seed, account isolation, rejected unauthenticated/invalid-date requests, correct weekday rotation including Sunday→Monday, and 65→40-minute deadline shortfall |
+| Existing regressions | `smoke_test.py`, `feature_test.py` and `lifecycle_test.py` passed against the real isolated backend |
+| Existing data | Accounts with archived tasks or saved capacity rejected seeding with their snapshots unchanged. Repeating a successful seed after study, archive and capacity changes preserved all data and the original sample date/ID |
+| Web interaction | New account → sample button → one 90-minute task; Progress automatically loaded 25/120/0/0/0/0/0. Walkthrough links navigated to the controls. Weekly plan showed 65 minutes short; recording 25 and replanning showed 40 |
+| Mobile interaction | React Native Web sample button created the same scenario and opened Progress with the saved capacities loaded |
+
+Run `python3 scripts/sample_test.py` with the development server running, or pass `--server URL`. It creates four disposable accounts without touching other accounts. Sample dates come from the requesting client; a replay retains the initial date. Repeat-request checks cover sequential retries, not simultaneous multi-client seeding. New sample-button interaction checks used React Native Web; this run did not repeat physical-device testing.
+
 ## Fresh GitHub checkout verification — 2026-09-26
 
-Tested application revision: **`4903800578f6532a1514926f12d60fa1706cace9`** (`4903800`), cloned directly from `https://github.com/howarddong0485/ec1-maizeplan.git`. The checkout had an empty `git status --short` before setup and after the application checks. This documentation update does not change the application source.
+Tested application revision: **`4903800578f6532a1514926f12d60fa1706cace9`** (`4903800`), cloned directly from `https://github.com/howarddong0485/ec1-maizeplan.git`. The checkout had an empty `git status --short` before setup and after the application checks. The September validation update changed documentation only; the October sample extension is recorded separately above.
 
 Environment: **Jac 0.37.21**, Apple Silicon macOS, **Homebrew Python 3.14.7**. The clone started without `.jac/`, `node_modules/`, `dist/`, or `.env`; a new project venv and database were created. The installed Jac executable, global toolchain/download caches, and Homebrew Python were reused. This verifies a fresh checkout on a configured development computer, not a clean operating-system installation.
 

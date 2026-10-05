@@ -11,13 +11,13 @@ MaizePlan is a personal coursework planner for students. Add assignments with a 
 
 **The workflow: capture → plan → study → correct → replan.** Web, phone, and terminal all use the same authenticated server, planning rules, and persistent data. The application runs without an LLM key, paid API, or external calendar account.
 
-[Run the project](#start-the-web-app-and-server) · [Review walkthrough](#review-walkthrough) · [Mobile instructions](#mobile-app) · [CLI instructions](#cli) · [Validation evidence](VALIDATION.md)
+[Run the project](#start-the-web-app-and-server) · [Three-minute demo](#three-minute-demo) · [Review walkthrough](#review-walkthrough) · [Mobile instructions](#mobile-app) · [CLI instructions](#cli) · [Validation evidence](VALIDATION.md)
 
 ## First time using MaizePlan?
 
 1. Complete the [prerequisites](#prerequisites) and [setup steps](#start-the-web-app-and-server). On Apple Silicon macOS, follow the documented Python environment step before installing project dependencies.
 2. From the repository root, run `jac install`, then `jac run`. Open the printed web URL, normally `http://localhost:8000`, and create a MaizePlan account.
-3. Add an assignment, enter your available minutes, and choose **Make my plan**. Use **Record your study** after working, or **Seven-day workload plan** to plan a week.
+3. Click **Load sample week** to try the [three-minute demo](#three-minute-demo), or add your own assignment and choose **Make my plan**. Use **Record your study** after working, or **Seven-day workload plan** to plan a week.
 4. Keep the server running. Follow the separate [mobile](#mobile-app) or [CLI](#cli) instructions and sign into the same MaizePlan account. Use **Refresh** after changing data on another interface.
 
 The web app and server run together on your computer. A physical phone runs the mobile client and connects to that computer's API; its setup requires the separate mobile instructions below. The [review walkthrough](#review-walkthrough) provides a worked example after setup.
@@ -48,9 +48,26 @@ The web also includes task search, open/completed/archived views, summary counts
 
 The [workspace configuration](jac.toml) selects `web` as the default app. After the prerequisites and dependencies are installed, **`jac run` from the repository root starts the web application and its server together**. Mobile and CLI launch commands are documented below.
 
+## Three-minute demo
+
+Start `jac run`, open its web URL, and create a **new account**. Click **Load sample week** near the top of the workspace. It creates **Finish EECS 449 report**, due on the day you load it, with **90 minutes** remaining. It also saves **25 minutes today, 120 tomorrow, and zero on the other five days**. No manual date or capacity setup is needed. Expand **Follow the short demo** in the app for the same steps and links to the relevant controls.
+
+| Time | Action | What to notice |
+|---|---|---|
+| 0:00–0:45 | Load the sample, follow **Plan seven days**, then click the planning button. | All 90 minutes fit across the week, yet **65 minutes miss today's deadline**. Tomorrow's work is marked late/catch-up. |
+| 0:45–1:30 | Under **Record your study**, select the report and record **25 minutes**. Generate the weekly plan again. | **65 minutes remain**, history shows **25**, and the deadline shortfall drops to **40**. |
+| 1:30–2:30 | Correct that record to **10**, undo it, then restore it with **25**. Expand the audit trail. | Remaining work goes **80 → 90 → 65**. The original record and all three revisions remain visible. |
+| 2:30–3:00 | Archive the report, switch to **Archived**, and restore it. | The task leaves the active list without losing its study history, then returns with **65 minutes** remaining. |
+
+For a cross-device finish, sign into mobile or CLI with this account and refresh: the same task, history and capacity appear. The longer walkthrough below moves actions between all three clients.
+
+The sample can also be loaded from the empty mobile workspace with **Load sample week** (which opens Progress), or after CLI login with `jac run cli sample`. On mobile, choose **Plan seven days** in Progress to begin. The server only seeds an account with no tasks, study history or saved capacity. It never clears existing work. Sequential repeat requests return the original sample reference without duplicating tasks or resetting progress. To replay from the beginning, use another new account. Dates stay anchored to the loading day; use that date for forecasts if continuing later.
+
+![Sample loaded with the in-app three-minute walkthrough](docs/sample-demo.png)
+
 ## Review walkthrough
 
-After setup, use a fresh MaizePlan account and the same planning server in each interface. Keep the study date and forecast start on **today** for the numbers below; the account should contain only the example task.
+After setup, use a fresh MaizePlan account and the same planning server in each interface. **Load sample week** performs the task creation and capacity setup in steps 1–2 below; you only need to generate the plan. Alternatively, enter those values manually. Keep the study date and forecast start on **today** for the numbers below; the account should contain only the example task.
 
 | Step | Action | What to observe |
 |---|---|---|
@@ -65,14 +82,14 @@ This walkthrough exercises all four components through one planning scenario. [T
 
 ## Verification at a glance
 
-The latest recorded validation on **2026-09-26 with Jac 0.37.21** includes:
+The baseline validation on **2026-09-26 with Jac 0.37.21** includes:
 
 - **12 scheduler unit tests passed**, including break budgets, partial allocations, deadline shortfalls, days off, and archive exclusion.
 - **All 3 app roots passed `jac check` with warnings**; web and React Native Web builds succeeded.
 - **Three real API/CLI integration scripts passed**, along with their process-restart checks for tasks, history, saved capacity, archives, and correction retries.
 - **Web and mobile browser-preview workflows were exercised together**, including shared capacity, correction/undo/restore, archive/restore, refresh consistency, and chart layout at phone width.
 
-**Mobile-app verification is complete.** The current application revision (`4903800`) also passed installation and default startup from a fresh GitHub checkout with a new project environment and database. The six-step review walkthrough and all three integration scripts' restart checks passed. Expo/Metro served both Android and iOS JavaScript bundles after the mobile startup adjustment documented below. [VALIDATION.md](VALIDATION.md) records the tested revision, commands, results, and scope of each check.
+**Mobile-app verification is complete.** The baseline application revision (`4903800`) also passed installation and default startup from a fresh GitHub checkout with a new project environment and database. The six-step review walkthrough and all three integration scripts' restart checks passed. Expo/Metro served both Android and iOS JavaScript bundles after the mobile startup adjustment documented below. The **2026-10-05 sample/demo update** passed scheduler tests, app checks, web/mobile browser builds and all four API/CLI scripts, with the new buttons exercised on web and React Native Web. [VALIDATION.md](VALIDATION.md) records the scope of each run.
 
 ## Scope and design boundaries
 
@@ -131,6 +148,9 @@ Keep the server running in another terminal. Run these from the repository root:
 jac run cli login YOUR_USERNAME
 # Or create an account:
 jac run cli register YOUR_USERNAME
+
+# Optional: one-time example for a new, empty account.
+jac run cli sample
 
 jac run cli add "Finish planner README" --course "EECS 449" --due 2026-10-05 --priority 3 --minutes 60
 jac run cli list
@@ -349,13 +369,16 @@ With the real backend running, run:
 python3 scripts/smoke_test.py
 python3 scripts/feature_test.py
 python3 scripts/lifecycle_test.py
+python3 scripts/sample_test.py
 ```
 
-Each script creates two uniquely named **test accounts** and test tasks on the selected development server. The smoke script tests authentication, isolation (including cross-account edits), invalid input rejection, edits, CLI capture/completion, and exact CLI/API planning consistency. The scripts do not remove those accounts or modify real users' tasks. Run only against your development instance.
+The scripts create uniquely named **test accounts** and test tasks on the selected development server. The smoke script tests authentication, isolation (including cross-account edits), invalid input rejection, edits, CLI capture/completion, and exact CLI/API planning consistency. The scripts do not remove those accounts or modify real users' tasks. Run only against your development instance.
 
 The feature script also creates two disposable accounts and checks study deductions, repeat-request handling, account isolation, weekly capacity validation, and exact CLI/API multi-day plan equality.
 
 The lifecycle script checks saved weekday capacity and date rotation, correction/undo/restore accounting and audit history, request replay and stale versions, manual estimate/completion preservation, archives and plan exclusion, and CLI/API parity.
+
+The sample script checks the one-click setup, the demo's 65-to-40-minute shortfall, weekday rotation, API/CLI parity, account isolation, repeat requests, and preservation of existing tasks/history/capacity.
 
 To verify persistence reproducibly:
 

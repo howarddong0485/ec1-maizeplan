@@ -8,6 +8,18 @@ def:pub Planner -> JsxElement {
     has title: str = "", course: str = "", due: str = today(), priority: str = "2", minutes: str = "60", editing: str = "";
     has day: str = today(), budget: str = "120", plan: any = None;
     has filter: str = "open", search: str = "", notice: str = "";
+    has sample_version: int = 0;
+
+    async def sample {
+        if busy { return; }
+        busy = True; error = ""; notice = "";
+        try {
+            result = await rpc(window.location.origin, token, "load_sample", {"day": today()});
+            await reload(); sample_version += 1;
+            filter = "open"; search = ""; notice = result["message"];
+        } except Exception as err { error = str(err); }
+        finally { busy = False; }
+    }
 
     async def reload {
         fresh: any = None;
@@ -121,6 +133,21 @@ def:pub Planner -> JsxElement {
             <section className="stats" aria-label="Task summary"><article><span>Open tasks</span><strong>{str(len(pending))}</strong></article><article><span>Past deadline</span><strong className={"danger" if len(overdue) else ""}>{str(len(overdue))}</strong></article><article><span>Completed</span><strong>{str(completed)}</strong></article></section>
             {<p className="error" role="alert">{error}</p> if error else <span/>}
             <p className="notice" role="status">{notice}</p>
+            <section className="demo-card" aria-label="Three-minute demo">
+                <p className="eyebrow">TRY MAIZEPLAN IN THREE MINUTES</p>
+                <h2>A deadline you can see coming</h2>
+                <p>Use a new account to load one assignment and a saved weekly routine. Existing tasks, history and saved capacity are kept intact.</p>
+                {<button className="primary" disabled={busy} onClick={sample}>Load sample week</button> if not len(tasks) and not len(history) else <p className="small">To start a fresh sample, sign out and create a new account.</p>}
+                <details><summary>Follow the short demo</summary>
+                    <ol>
+                        <li><a href="#weekly-plan">Plan seven days</a>: the saved 25 / 120 / 0 / 0 / 0 / 0 / 0 capacities fit all 90 minutes, but 65 miss today's deadline.</li>
+                        <li><a href="#study-progress">Record 25 minutes</a> for the sample task. Remaining work becomes 65; regenerate the weekly plan to see a 40-minute shortfall.</li>
+                        <li>Correct the record to 10 minutes: 80 remain. Undo: 90 remain. Restore with 25: 65 remain. Expand the three-change audit trail.</li>
+                        <li>Archive the task, then restore it from Archived. Its study history stays. Sign into mobile or CLI with this account and refresh to see the same result.</li>
+                    </ol>
+                    <p className="small">These numbers apply to the fresh sample. Dates use the day you load it; use that date when planning. The full cross-device walkthrough is in README.</p>
+                </details>
+            </section>
             <div className="columns"><section className="task-area">
                 <div className="section-heading"><h2>Your coursework</h2><span className="small">Sorted by deadline, then priority</span></div>
                 <div className="filters"><div className="tabs">{[<button key={v} aria-pressed={filter == v} className={"active" if filter == v else ""} onClick={lambda { filter = v; }}>{v.capitalize()}</button> for v in ["open", "done", "all", "archived"]]}</div><input aria-label="Search tasks and courses" placeholder="Find a task or course" value={search} onChange={lambda (e: ChangeEvent) { search = e.target.value; }}/></div>
@@ -137,7 +164,7 @@ def:pub Planner -> JsxElement {
                         <ol className="timeline">{[<li key={str(i)}><span className="time">+{str(b["start"])} min</span><div><strong>{b["title"]}</strong><p>{b["course"] or "Personal"} · {str(b["minutes"])} min focus{" · after a 5-min break" if b["break_before"] else ""}</p></div></li> for (i, b) in enumerate(plan["blocks"])]}</ol>
                         {<p>No open tasks. Enjoy the space in your day.</p> if not len(plan["blocks"]) else <span/>}</div> if plan else <p className="small">Uses every open task, ordered by deadline. Includes breaks in your time budget. Nothing is marked complete automatically.</p>}
                 </section>
-                <Progress base={window.location.origin} token={token} tasks={tasks} history={history} onSaved={reload}/>
+                <Progress key={str(sample_version)} base={window.location.origin} token={token} tasks={tasks} history={history} onSaved={reload}/>
             </section><aside className="editor"><p className="eyebrow">GET IT OUT OF YOUR HEAD</p><h2>{"Edit task" if editing else "Add a task"}</h2>
                 <form onSubmit={save}><label htmlFor="title">What needs doing?</label><input id="title" placeholder="Finish the bandits reading" required={True} maxLength={160} value={title} onChange={lambda (e: ChangeEvent) { title = e.target.value; }}/>
                     <label htmlFor="course">Course or area</label><input id="course" placeholder="EECS 449" maxLength={40} value={course} onChange={lambda (e: ChangeEvent) { course = e.target.value; }}/>

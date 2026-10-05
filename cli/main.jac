@@ -33,6 +33,8 @@ def _parser -> argparse.ArgumentParser {
         cmd = sub.add_parser(name); cmd.add_argument("username");
     }
     sub.add_parser("logout");
+    sample = sub.add_parser("sample", help="Load the demo once into an empty account; never resets existing data");
+    sample.add_argument("--day", `default=date.today().isoformat(), help="Sample deadline and first capacity date (default: today)");
     listing = sub.add_parser("list");
     listing.add_argument("--all", action="store_true", help="Include completed tasks");
     listing.add_argument("--today", action="store_true", help="Only due or overdue tasks");
@@ -103,6 +105,7 @@ def main -> int {
     payload: dict[str, any] = {};
     endpoint = "";
     if args.command == "list" { endpoint = "list_tasks"; payload = {"include_archived": args.archived}; }
+    elif args.command == "sample" { endpoint = "load_sample"; payload = {"day": args.day}; }
     elif args.command == "add" {
         endpoint = "save_task";
         payload = {"title": args.title, "course": args.course, "due": args.due,
@@ -193,6 +196,10 @@ def main -> int {
         }
         for r in result["risks"] { print(f"WARNING: {r['title']} due {r['due']}: {r['minutes']}m {'already overdue' if r['overdue'] else 'cannot fit by deadline'}"); }
         print(f"Unscheduled after this horizon: {result['remaining']}m");
+    } elif args.command == "sample" {
+        print(result["message"]);
+        print("Sample date: " + result["day"] + " | Task ID: " + result["task_id"]);
+        print("Next: jac run cli week --start " + result["day"]);
     } else { print(f"Saved: {result['title']} (ID: {result['id']})"); }
     return 0;
 }

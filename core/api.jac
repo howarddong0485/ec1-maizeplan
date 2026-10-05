@@ -191,6 +191,29 @@ def:protect revise_study(session_id: str, minutes: int, day: str, voided: bool,
 
 node WeeklyCapacity { has budgets: list[int]; }
 
+node SampleLoad { has day: str, task_id: str; }
+
+def:protect load_sample(day: str) -> dict[str, any] {
+    _valid_date(day);
+    for sample in [root -->][?:SampleLoad] {
+        return {"created": False, "day": sample.day, "task_id": sample.task_id,
+            "message": "Sample already loaded. Your progress and capacity are unchanged. Use a new account to restart the demo."};
+    }
+    sessions = [root -->][?:StudySession];
+    settings = [root -->][?:WeeklyCapacity];
+    if _all(True) or len(sessions) > 0 or len(settings) > 0 {
+        raise ValueError("Load the sample in a new, empty account. Existing tasks, history and saved capacity are unchanged.");
+    }
+    weekday = date.fromisoformat(day).weekday();
+    pattern: list[int] = [25 if i == weekday else (120 if i == (weekday + 1) % 7 else 0) for i in range(7)];
+    task = root ++> Task(title="Finish EECS 449 report", course="EECS 449",
+        due=day, priority=2, minutes=90);
+    root ++> WeeklyCapacity(budgets=pattern);
+    root ++> SampleLoad(day=day, task_id=jid(task));
+    return {"created": True, "day": day, "task_id": jid(task),
+        "message": "Sample loaded: 90 minutes due today, with 25 minutes today and 120 tomorrow. Plan seven days to see the 65-minute deadline shortfall."};
+}
+
 def:protect get_capacity() -> dict[str, any] {
     for settings in [root -->][?:WeeklyCapacity] {
         return {"budgets": settings.budgets, "saved": True};

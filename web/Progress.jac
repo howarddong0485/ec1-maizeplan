@@ -63,7 +63,7 @@ def:pub Progress(base: str, token: str, tasks: list[dict[str, any]], history: li
     }
     week = forecast if forecast_tasks is tasks else None;
     return <section className="progress-tools">
-        <section className="focus"><p className="eyebrow">PLAN · STUDY · ADJUST</p><h2>Record your study</h2>
+        <section className="focus" id="study-progress"><p className="eyebrow">PLAN · STUDY · ADJUST</p><h2>Record your study</h2>
             <p className="small">Record actual focus minutes, excluding breaks. Remaining work never goes below zero. Repeating a failed request with unchanged fields will not count it twice.</p>
             {<p role="alert" className="error">{error}</p> if error else <span/>}
             <p role="status" className="notice">{notice}</p>
@@ -77,7 +77,7 @@ def:pub Progress(base: str, token: str, tasks: list[dict[str, any]], history: li
             <button className="secondary" disabled={busy} onClick={load_history}>Refresh tasks &amp; study history</button>
             <StudyHistory base={base} token={token} history={history} onSaved={onSaved}/>
         </section>
-        <section className="focus"><p className="eyebrow">SEE THE WEEK AHEAD</p><h2>Seven-day workload plan</h2>
+        <section className="focus" id="weekly-plan"><p className="eyebrow">SEE THE WEEK AHEAD</p><h2>Seven-day workload plan</h2>
             <p className="small">Daily budgets include breaks. Use 0 for a day off, otherwise 5–720 minutes. Generate again after tasks change; this forecast is not a saved calendar.</p>
             <p className="small">Saved capacity repeats by weekday. Changing the start date loads that routine; unsaved edits apply only to this forecast.</p>
             <p className="notice" role="status">{capacity_notice}</p>

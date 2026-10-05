@@ -27,6 +27,17 @@ def:pub Phone -> JsxElement {
     has history: list[dict[str, any]] = [];
     has show_archived: bool = False;
     has plan: any = None, budget: str = "120", day: str = today();
+    has notice: str = "";
+
+    async def sample {
+        if busy { return; }
+        busy = True; error = ""; notice = "";
+        try {
+            result = await rpc(base, token, "load_sample", {"day": today()});
+            await load(); notice = result["message"]; tab = "progress";
+        } except Exception as err { error = str(err); }
+        finally { busy = False; }
+    }
 
     async def load {
         result: any = None;
@@ -106,6 +117,11 @@ def:pub Phone -> JsxElement {
                 <Pressable disabled={busy} style={styles.secondary} onPress={lambda { signup = not signup; }}><Text style={styles.buttonText}>{"Use existing account" if signup else "New? Create account"}</Text></Pressable>
                 <Text style={styles.text}>Password: at least 8 characters. Session tokens stay in memory; tasks stay on the server.</Text>
             </View> if not token else <View style={{gap: 16}}>
+                {<Text style={styles.text}>{notice}</Text> if notice else <View/>}
+                {<View style={styles.card}><Text style={styles.title}>Try the sample week</Text>
+                    <Text style={styles.meta}>For a new account: one 90-minute assignment due today, with 25 minutes today and 120 tomorrow. Existing saved data is never replaced.</Text>
+                    <Pressable accessibilityRole="button" disabled={busy} style={styles.button} onPress={sample}><Text style={styles.buttonText}>Load sample week</Text></Pressable>
+                </View> if not len(tasks) and not len(history) else <View/>}
                 <View style={styles.row}>{[<Pressable key={v} style={styles.button if tab == v else styles.secondary} onPress={lambda { tab = v; }}><Text style={styles.buttonText}>{v.capitalize()}</Text></Pressable> for v in ["tasks", "add", "focus", "progress"]]}</View>
                 {<View style={{gap: 14}}><Pressable disabled={busy} style={styles.secondary} onPress={refresh}><Text style={styles.buttonText}>Refresh from server</Text></Pressable>
                     <Pressable accessibilityRole="button" style={styles.secondary} onPress={lambda { show_archived = not show_archived; }}><Text style={styles.buttonText}>{"Show active tasks" if show_archived else "Show archived tasks"}</Text></Pressable>
@@ -130,7 +146,7 @@ def:pub Phone -> JsxElement {
                     </View> if plan else <View/>}
                 </View> if tab == "focus" else <View/>}
                 {<Progress base={base} token={token} tasks={tasks} history={history} onSaved={load}/> if tab == "progress" else <View/>}
-                <Pressable disabled={busy} style={styles.secondary} onPress={lambda { token = ""; tasks = []; history = []; plan = None; error = ""; title = ""; course = ""; }}><Text style={styles.buttonText}>Sign out</Text></Pressable>
+                <Pressable disabled={busy} style={styles.secondary} onPress={lambda { token = ""; tasks = []; history = []; plan = None; error = ""; notice = ""; title = ""; course = ""; }}><Text style={styles.buttonText}>Sign out</Text></Pressable>
             </View>}
         </ScrollView>
     </KeyboardAvoidingView>;
